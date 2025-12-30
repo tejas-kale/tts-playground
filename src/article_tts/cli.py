@@ -49,7 +49,7 @@ def cli():
 )
 @click.option(
     '--docker-image',
-    default='tejaskale/article-tts-unified:latest',
+    default='runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04',
     help='Docker image for the unified endpoint',
 )
 @click.option(
@@ -105,12 +105,23 @@ def configure(
         if hf_token:
             env_vars['HF_TOKEN'] = hf_token
 
+        # Create comprehensive start command
+        docker_args = (
+            "apt-get update && "
+            "apt-get install -y git ffmpeg libsndfile1 && "
+            "pip install runpod chatterbox-tts soundfile pydub torchaudio accelerate && "
+            "git clone https://github.com/tejas-kale/VibeVoice.git /tmp/VibeVoice && "
+            "cd /tmp/VibeVoice && pip install -e . && cd / && "
+            "wget -O /handler.py https://raw.githubusercontent.com/tejas-kale/tts-playground/claude/chatterbox-uv-tool-EBZ91/runpod_deployments/unified/handler.py && "
+            "python /handler.py"
+        )
+
         template_name = "article-tts-unified"
         template_id = manager.create_template(
             name=template_name,
             image_name=docker_image,
-            docker_args="python /app/handler.py",
-            container_disk_gb=15,  # More space for both models
+            docker_args=docker_args,
+            container_disk_gb=20,  # More space for installations
             env_vars=env_vars,
             readme="Unified Article TTS endpoint supporting ChatterboxTurboTTS and VibeVoice",
         )

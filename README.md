@@ -79,7 +79,7 @@ article-tts configure [OPTIONS]
 
 **Options:**
 - `--api-key` - Runpod API key (or set `RUNPOD_API_KEY`)
-- `--docker-image` - Custom Docker image (default: `tejaskale/article-tts-unified:latest`)
+- `--docker-image` - Base Docker image (default: `runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04`)
 - `--gpu-type` - GPU type: AMPERE_16, AMPERE_24, AMPERE_48, ADA_24 (default: AMPERE_16)
 - `--workers-max` - Maximum workers (default: 1)
 - `--hf-token` - Hugging Face token for Chatterbox (or set `HF_TOKEN`)
@@ -194,7 +194,7 @@ Configuration is stored at `~/.article-tts/config.json`:
   "api_key": "your-runpod-api-key",
   "endpoint_id": "xyz123",
   "template_id": "abc456",
-  "docker_image": "tejaskale/article-tts-unified:latest",
+  "docker_image": "runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04",
   "gpu_type": "AMPERE_16"
 }
 ```
@@ -282,16 +282,24 @@ tts-playground/
 
 1. **First Run**: `article-tts configure`
    - Creates Runpod template via GraphQL API
-   - Deploys endpoint with unified Docker image
-   - Saves endpoint ID to `~/.article-tts/config.json`
+   - Uses base PyTorch image with dynamic installation
+   - Start command installs ChatterboxTTS, VibeVoice, and dependencies
+   - Downloads unified handler from GitHub
+   - Deploys endpoint and saves endpoint ID to `~/.article-tts/config.json`
 
-2. **Synthesis**: `article-tts speak`
+2. **Container Startup** (automatic on first request):
+   - Installs system dependencies (git, ffmpeg, libsndfile1)
+   - Installs Python packages (chatterbox-tts, VibeVoice, etc.)
+   - Downloads and runs unified handler
+   - Loads both models on cold start (2-3 minutes first time)
+
+3. **Synthesis**: `article-tts speak`
    - Reads endpoint ID from config
    - Sends request with `model` parameter
    - Handler routes to appropriate model
    - Returns generated audio
 
-3. **Model Selection**:
+4. **Model Selection**:
    - Request includes `"model": "chatterbox"` or `"vibevoice"`
    - Handler loads appropriate model (cached after first use)
    - Model-specific optimizations applied server-side
@@ -308,9 +316,11 @@ cd tts-playground
 uv pip install -e ".[dev]"
 ```
 
-### Building the Unified Docker Image
+### Building Custom Docker Images (Optional)
 
-To build and push your own image:
+By default, `article-tts configure` uses the base PyTorch image and installs dependencies dynamically via start commands. This approach requires no pre-built images and is the recommended method.
+
+However, if you want to build a custom image for faster cold starts:
 
 ```bash
 cd runpod_deployments/unified
@@ -324,6 +334,8 @@ docker push your-username/article-tts-unified:latest
 # Use in configuration
 article-tts configure --docker-image your-username/article-tts-unified:latest
 ```
+
+**Note**: With a custom image, the start command will be simpler (`python /app/handler.py`) since dependencies are pre-installed.
 
 ### Run Tests
 

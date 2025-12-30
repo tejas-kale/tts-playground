@@ -5,17 +5,28 @@ This directory contains the unified Runpod serverless deployment that supports b
 ## Files
 
 - `handler.py` - Unified serverless handler supporting both models
-- `Dockerfile` - Container image with both Chatterbox and VibeVoice
+- `Dockerfile` - Container image with both Chatterbox and VibeVoice (optional)
 - `requirements.txt` - Python dependencies
 - `README.md` - This file
 
-## Automatic Deployment
+## Default Deployment Method
 
-The `article-tts configure` CLI command automatically handles template creation and endpoint deployment. You don't need to manually deploy this.
+By default, `article-tts configure` uses **dynamic installation** with the base PyTorch image:
 
-## Manual Deployment
+- **Base Image**: `runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04`
+- **Start Command**: Installs dependencies and downloads handler at runtime
+- **No pre-built images required**
+- **Handler fetched from**: GitHub repository on container startup
 
-If you want to deploy manually or build a custom image:
+This approach:
+- ✅ No need to build or maintain custom Docker images
+- ✅ Always uses latest handler code
+- ✅ Simpler deployment process
+- ⚠️ First cold start takes 3-5 minutes (subsequent starts are fast with cached models)
+
+## Alternative: Pre-built Docker Image
+
+If you prefer faster cold starts, you can build a custom image:
 
 ### 1. Build and Push Docker Image
 
