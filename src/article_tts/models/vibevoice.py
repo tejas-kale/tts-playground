@@ -1,87 +1,84 @@
-"""VibeVoice model implementation for local inference."""
+"""VibeVoice model implementation using Runpod serverless."""
 
 from __future__ import annotations
 
+import base64
 import os
-import re
+import time
 from pathlib import Path
-from typing import Any
 
-import soundfile as sf
-import torch
-from pydub import AudioSegment
+import requests
 from rich.console import Console
 
 console = Console()
 
 
 class VibeVoiceModel:
-    """VibeVoice model for local text-to-speech inference."""
+    """VibeVoice model client for Runpod serverless inference."""
 
     def __init__(
         self,
-        model_name: str = "seshurajup/VibeVoice",
-        voice_sample_path: str | None = None,
-        device: str | None = None,
+        api_key: str | None = None,
+        endpoint_id: str | None = None,
+        docker_image: str | None = None,
+        auto_setup: bool = True,
     ):
-        """Initialize the VibeVoice model.
+        """Initialize the VibeVoice client.
 
         Args:
-            model_name: Hugging Face model name
-            voice_sample_path: Path to voice sample audio file (optional)
-            device: Device to use ('cuda' or 'cpu'). Auto-detects if None.
+            api_key: Runpod API key (or set RUNPOD_API_KEY env var)
+            endpoint_id: Runpod endpoint ID (or auto-created if auto_setup=True)
+            docker_image: Docker image for VibeVoice deployment
+            auto_setup: Automatically create template and endpoint if needed
         """
-        try:
-            from vibevoice.modular.modeling_vibevoice_inference import (
-                VibeVoiceForConditionalGenerationInference,
-            )
-            from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
-        except ImportError:
-            raise ImportError(
-                "VibeVoice is not installed. Install it with:\n"
-                "  git clone https://github.com/tejas-kale/VibeVoice.git\n"
-                "  cd VibeVoice && pip install -e ."
+        self.api_key = api_key or os.getenv('RUNPOD_API_KEY')
+        if not self.api_key:
+            raise ValueError(
+                "Runpod API key required. Set RUNPOD_API_KEY environment "
+                "variable or pass it as an argument."
             )
 
-        self.device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+        self.docker_image = docker_image or os.getenv(
+            'VIBEVOICE_DOCKER_IMAGE',
+            'tejaskale/vibevoice-runpod:latest'
+        )
 
-        console.print(f"[cyan]Loading VibeVoice model on {self.device}...[/cyan]")
+        # Get or create endpoint
+        if endpoint_id:
+            self.endpoint_id = endpoint_id
+        elif auto_setup:
+            console.print("[cyan]Setting up VibeVoice endpoint...[/cyan]")
+            self.endpoint_id = self._setup_endpoint()
+        else:
+            raise ValueError(
+                "Either endpoint_id must be provided or auto_setup must be True"
+            )
 
-        # Load model and processor
-        self.model = VibeVoiceForConditionalGenerationInference.from_pretrained(
-            model_name
-        ).to(self.device)
-        self.processor = VibeVoiceProcessor.from_pretrained(model_name)
+        self.base_url = f"https://api.runpod.ai/v2/{self.endpoint_id}"
+        self.headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
 
-        self.voice_sample_path = voice_sample_path
-
-        console.print("[green]✓ Model loaded successfully[/green]")
-
-    def preprocess_text(self, text: str, add_speaker: bool = True) -> str:
-        """Preprocess text for VibeVoice synthesis.
-
-        Args:
-            text: Input text
-            add_speaker: Whether to add speaker labels if not present
+    def _setup_endpoint(self) -> str:
+        """Setup template and endpoint automatically.
 
         Returns:
-            Preprocessed text
+            Endpoint ID
         """
-        # Basic preprocessing
-        text = text.strip()
+        from article_tts.runpod_manager import RunpodManager
 
-        # Add speaker labels if requested and not already present
-        if add_speaker:
-            lines = text.split('\n')
-            processed_lines = []
-            for line in lines:
-                line = line.strip()
-                if line and not re.match(r'^Speaker \d+:', line):
-                    line = f"Speaker 1: {line}"
-                processed_lines.append(line)
-            text = '\n'.join(processed_lines)
+        manager = RunpodManager(api_key=self.api_key)
 
-        return text
+        # Get GPU type from environment or use default
+        gpu_ids = os.getenv('VIBEVOICE_GPU_TYPE', 'AMPERE_16')
+
+        endpoint_id = manager.ensure_vibevoice_endpoint(
+            docker_image=self.docker_image,
+            gpu_ids=gpu_ids,
+        )
+
+        return endpoint_id
 
     def synthesize(
         self,
@@ -89,167 +86,96 @@ class VibeVoiceModel:
         output_path: str | Path,
         voice_sample_path: str | Path | None = None,
         add_speaker_labels: bool = True,
-        max_length: int = 2000,
+        chunk_size: int = 500,
     ) -> Path:
-        """Synthesize speech using VibeVoice.
+        """Synthesize speech using VibeVoice via Runpod.
 
         Args:
             text: Input text
             output_path: Path to save the audio file
-            voice_sample_path: Path to voice sample (overrides instance setting)
-            add_speaker_labels: Whether to automatically add speaker labels
-            max_length: Maximum generation length
+            voice_sample_path: Path to voice sample (optional)
+            add_speaker_labels: Whether to add speaker labels automatically
+            chunk_size: Maximum characters per chunk for long text
 
         Returns:
             Path to the generated audio file
         """
         output_path = Path(output_path)
 
-        # Preprocess text
-        processed_text = self.preprocess_text(text, add_speaker=add_speaker_labels)
+        console.print("[cyan]Synthesizing with VibeVoice (Runpod)...[/cyan]")
 
-        console.print("[cyan]Synthesizing with VibeVoice...[/cyan]")
-
-        # Prepare inputs
-        if voice_sample_path or self.voice_sample_path:
-            sample_path = voice_sample_path or self.voice_sample_path
-            console.print(f"[cyan]Using voice sample: {sample_path}[/cyan]")
-
-            # Load voice sample
-            voice_audio, voice_sr = sf.read(str(sample_path))
-
-            # Process inputs with voice sample
-            inputs = self.processor(
-                text=processed_text,
-                audio=voice_audio,
-                sampling_rate=voice_sr,
-                return_tensors="pt"
-            )
-        else:
-            # Process without voice sample (uses default voice)
-            console.print("[yellow]No voice sample provided, using default voice[/yellow]")
-            inputs = self.processor(
-                text=processed_text,
-                return_tensors="pt"
-            )
-
-        # Move inputs to device
-        inputs = {k: v.to(self.device) if torch.is_tensor(v) else v
-                 for k, v in inputs.items()}
-
-        # Generate audio
-        with torch.no_grad():
-            output = self.model.generate(
-                **inputs,
-                max_length=max_length,
-            )
-
-        # Convert output to numpy array
-        if torch.is_tensor(output):
-            audio_array = output.cpu().numpy()
-        else:
-            audio_array = output
-
-        # Get sample rate from model config
-        sample_rate = getattr(
-            self.model.config, 'sample_rate', 24000
-        )  # Default to 24kHz
-
-        # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Save audio
-        sf.write(
-            str(output_path),
-            audio_array.squeeze(),
-            sample_rate,
-            format='WAV'
-        )
-
-        console.print(f"[green]✓ Audio generated successfully[/green]")
-        return output_path
-
-    def synthesize_long_text(
-        self,
-        text: str,
-        output_path: str | Path,
-        voice_sample_path: str | Path | None = None,
-        chunk_size: int = 500,  # characters, not tokens
-        add_speaker_labels: bool = True,
-    ) -> Path:
-        """Synthesize long text by splitting into chunks.
-
-        Args:
-            text: Input text
-            output_path: Path to save the audio file
-            voice_sample_path: Path to voice sample
-            chunk_size: Maximum characters per chunk
-            add_speaker_labels: Whether to add speaker labels
-
-        Returns:
-            Path to the generated audio file
-        """
-        output_path = Path(output_path)
-
-        # Split text into chunks at sentence boundaries
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-
-        chunks = []
-        current_chunk = []
-        current_length = 0
-
-        for sentence in sentences:
-            sentence_length = len(sentence)
-
-            if current_length + sentence_length > chunk_size and current_chunk:
-                chunks.append(' '.join(current_chunk))
-                current_chunk = [sentence]
-                current_length = sentence_length
+        # Prepare voice sample if provided
+        voice_sample_b64 = None
+        if voice_sample_path:
+            voice_path = Path(voice_sample_path)
+            if not voice_path.exists():
+                console.print(f"[yellow]Warning: Voice sample not found: {voice_path}[/yellow]")
             else:
-                current_chunk.append(sentence)
-                current_length += sentence_length
+                console.print(f"[cyan]Using voice sample: {voice_path}[/cyan]")
+                voice_sample_b64 = base64.b64encode(voice_path.read_bytes()).decode()
 
-        if current_chunk:
-            chunks.append(' '.join(current_chunk))
+        # Prepare payload
+        payload = {
+            "input": {
+                "text": text,
+                "add_speaker_labels": add_speaker_labels,
+                "chunk_size": chunk_size,
+            }
+        }
 
-        console.print(f"[cyan]Split text into {len(chunks)} chunks[/cyan]")
+        if voice_sample_b64:
+            payload["input"]["voice_sample"] = voice_sample_b64
 
-        # Synthesize each chunk
-        audio_chunks = []
-        temp_dir = output_path.parent / '.temp_chunks'
-        temp_dir.mkdir(exist_ok=True)
+        # Submit job
+        response = requests.post(
+            f"{self.base_url}/run",
+            json=payload,
+            headers=self.headers,
+            timeout=300,
+        )
+        response.raise_for_status()
+        job_id = response.json()["id"]
 
-        try:
-            for i, chunk in enumerate(chunks, 1):
-                console.print(f"[cyan]  Chunk {i}/{len(chunks)}[/cyan]")
+        console.print(f"[cyan]Job submitted (ID: {job_id}), waiting for completion...[/cyan]")
 
-                chunk_path = temp_dir / f'chunk_{i}.wav'
-                self.synthesize(
-                    chunk,
-                    chunk_path,
-                    voice_sample_path=voice_sample_path,
-                    add_speaker_labels=add_speaker_labels,
-                )
+        # Poll for completion
+        max_attempts = 120  # 10 minutes max
+        attempt = 0
 
-                # Load chunk audio
-                chunk_audio = AudioSegment.from_wav(str(chunk_path))
-                audio_chunks.append(chunk_audio)
+        while attempt < max_attempts:
+            response = requests.get(
+                f"{self.base_url}/status/{job_id}",
+                headers=self.headers,
+                timeout=30,
+            )
+            response.raise_for_status()
+            status_data = response.json()
 
-            # Concatenate all chunks
-            console.print("[cyan]Concatenating audio chunks...[/cyan]")
-            combined = AudioSegment.empty()
-            for chunk_audio in audio_chunks:
-                combined += chunk_audio
+            status = status_data.get("status")
 
-            # Export final audio
-            combined.export(str(output_path), format='wav')
+            if status == "COMPLETED":
+                output = status_data.get("output", {})
+                if "error" in output:
+                    raise RuntimeError(f"Synthesis error: {output['error']}")
 
-            console.print(f"[green]✓ Long audio generated successfully[/green]")
+                audio_b64 = output.get("audio")
+                if not audio_b64:
+                    raise RuntimeError("No audio data in response")
 
-        finally:
-            # Clean up temp files
-            for temp_file in temp_dir.glob('*.wav'):
-                temp_file.unlink()
-            temp_dir.rmdir()
+                # Decode and save audio
+                audio_data = base64.b64decode(audio_b64)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(audio_data)
 
-        return output_path
+                console.print(f"[green]✓ Audio generated successfully[/green]")
+                return output_path
+
+            elif status == "FAILED":
+                error = status_data.get("error", "Unknown error")
+                raise RuntimeError(f"Job failed: {error}")
+
+            # Wait before next poll
+            time.sleep(5)
+            attempt += 1
+
+        raise RuntimeError("Job timed out after 10 minutes")

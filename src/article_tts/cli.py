@@ -32,7 +32,7 @@ console = Console()
 def cli():
     """Article TTS - Unified CLI for text-to-speech synthesis.
 
-    Supports ChatterboxTurboTTS (via Runpod) and VibeVoice (local inference).
+    Supports ChatterboxTurboTTS and VibeVoice via Runpod serverless.
     """
     pass
 
@@ -184,27 +184,22 @@ def speak(
             chatterbox.synthesize(text, wav_output)
 
         elif model.lower() == 'vibevoice':
-            console.print("[bold cyan]Using VibeVoice[/bold cyan]")
+            console.print("[bold cyan]Using VibeVoice (Runpod)[/bold cyan]")
 
-            try:
-                vibevoice = VibeVoiceModel(voice_sample_path=voice_sample)
-
-                # Determine if we need to use long text synthesis
-                if len(text) > 1000:  # Use chunking for long text
-                    vibevoice.synthesize_long_text(
-                        text,
-                        wav_output,
-                        voice_sample_path=voice_sample,
-                    )
-                else:
-                    vibevoice.synthesize(
-                        text,
-                        wav_output,
-                        voice_sample_path=voice_sample,
-                    )
-            except ImportError as e:
-                console.print(f"[red]Error: {e}[/red]")
+            if not runpod_api_key:
+                console.print(
+                    "[red]Error: Runpod API key required for VibeVoice.[/red]\n"
+                    "Set RUNPOD_API_KEY environment variable or pass it as an option."
+                )
                 raise click.Abort()
+
+            vibevoice = VibeVoiceModel(api_key=runpod_api_key)
+
+            vibevoice.synthesize(
+                text,
+                wav_output,
+                voice_sample_path=voice_sample,
+            )
 
         # Apply speed adjustment if needed
         final_wav = wav_output
@@ -282,7 +277,7 @@ def info():
 
     console.print("[bold]Available Models:[/bold]")
     console.print("  • chatterbox - ChatterboxTurboTTS via Runpod (serverless)")
-    console.print("  • vibevoice  - VibeVoice local inference (requires GPU)\n")
+    console.print("  • vibevoice  - VibeVoice via Runpod (serverless)\n")
 
     console.print("[bold]ChatterboxTurboTTS:[/bold]")
     console.print("  • Requires: RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID")
@@ -291,34 +286,37 @@ def info():
     console.print("  • Serverless inference via Runpod\n")
 
     console.print("[bold]VibeVoice:[/bold]")
-    console.print("  • Requires: Local GPU (CUDA recommended)")
-    console.print("  • Supports custom voice samples")
-    console.print("  • Automatic chunking for long text")
-    console.print("  • Local inference for privacy\n")
+    console.print("  • Requires: RUNPOD_API_KEY")
+    console.print("  • Supports custom voice samples for voice cloning")
+    console.print("  • Automatic chunking for long text (500 char chunks)")
+    console.print("  • Serverless inference via Runpod")
+    console.print("  • Endpoint auto-created on first use\n")
 
     console.print("[bold]Environment Variables:[/bold]")
-    console.print("  • RUNPOD_API_KEY - Runpod API key (for Chatterbox)")
-    console.print("  • RUNPOD_ENDPOINT_ID - Runpod endpoint ID (for Chatterbox)")
+    console.print("  • RUNPOD_API_KEY - Runpod API key (required for both models)")
+    console.print("  • RUNPOD_ENDPOINT_ID - Runpod endpoint ID (required for Chatterbox)")
+    console.print("  • VIBEVOICE_DOCKER_IMAGE - Custom Docker image for VibeVoice (optional)")
+    console.print("  • VIBEVOICE_GPU_TYPE - GPU type for VibeVoice (default: AMPERE_16)")
 
     # Check current configuration
     console.print("\n[bold]Current Configuration:[/bold]")
     runpod_key = os.getenv('RUNPOD_API_KEY')
     runpod_endpoint = os.getenv('RUNPOD_ENDPOINT_ID')
+    vibevoice_image = os.getenv('VIBEVOICE_DOCKER_IMAGE')
+    vibevoice_gpu = os.getenv('VIBEVOICE_GPU_TYPE')
 
     console.print(
         f"  • Runpod API Key: {'✓ Set' if runpod_key else '✗ Not set'}"
     )
     console.print(
-        f"  • Runpod Endpoint: {'✓ Set' if runpod_endpoint else '✗ Not set'}"
+        f"  • Chatterbox Endpoint: {'✓ Set' if runpod_endpoint else '✗ Not set'}"
     )
-
-    # Check for GPU
-    try:
-        import torch
-        has_cuda = torch.cuda.is_available()
-        console.print(f"  • CUDA Available: {'✓ Yes' if has_cuda else '✗ No'}")
-    except ImportError:
-        console.print("  • CUDA Available: ✗ PyTorch not installed")
+    console.print(
+        f"  • VibeVoice Docker Image: {vibevoice_image if vibevoice_image else 'Default (tejaskale/vibevoice-runpod:latest)'}"
+    )
+    console.print(
+        f"  • VibeVoice GPU Type: {vibevoice_gpu if vibevoice_gpu else 'Default (AMPERE_16)'}"
+    )
 
 
 if __name__ == '__main__':
