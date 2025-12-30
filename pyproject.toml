@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "article-tts"
+version = "0.1.0"
+description = "A unified CLI tool for text-to-speech synthesis using ChatterboxTurboTTS and VibeVoice"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+    {name = "Tejas Kale"}
+]
+keywords = ["tts", "text-to-speech", "chatterbox", "vibevoice", "audio", "synthesis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "click>=8.1.0",
+    "rich>=13.7.0",
+    "requests>=2.31.0",
+    "python-dotenv>=1.0.0",
+    "pydub>=0.25.1",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "soundfile>=0.12.1",
+    "transformers>=4.35.0",
+    "huggingface-hub>=0.19.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+article-tts = "article_tts.cli:cli"
+
+[project.urls]
+Homepage = "https://github.com/tejas-kale/tts-playground"
+Repository = "https://github.com/tejas-kale/tts-playground"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/article_tts"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+    "/pyproject.toml",
+]
