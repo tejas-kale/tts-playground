@@ -11,7 +11,9 @@ from dotenv import load_dotenv
 from rich.console import Console
 
 from article_tts import __version__
+from article_tts.config import Config
 from article_tts.models import ChatterboxModel, VibeVoiceModel
+from article_tts.runpod_manager import RunpodManager
 from article_tts.utils import (
     adjust_speed,
     convert_to_mp3,
@@ -35,6 +37,115 @@ def cli():
     Supports ChatterboxTurboTTS and VibeVoice via Runpod serverless.
     """
     pass
+
+
+@cli.command()
+@click.option(
+    '--api-key',
+    envvar='RUNPOD_API_KEY',
+    help='Runpod API key',
+    prompt='Runpod API key',
+    hide_input=True,
+)
+@click.option(
+    '--docker-image',
+    default='tejaskale/article-tts-unified:latest',
+    help='Docker image for the unified endpoint',
+)
+@click.option(
+    '--gpu-type',
+    default='AMPERE_16',
+    type=click.Choice(['AMPERE_16', 'AMPERE_24', 'AMPERE_48', 'ADA_24']),
+    help='GPU type to use (default: AMPERE_16)',
+)
+@click.option(
+    '--workers-max',
+    default=1,
+    type=int,
+    help='Maximum number of workers (default: 1)',
+)
+@click.option(
+    '--hf-token',
+    envvar='HF_TOKEN',
+    help='Hugging Face token (required for Chatterbox)',
+)
+def configure(
+    api_key: str,
+    docker_image: str,
+    gpu_type: str,
+    workers_max: int,
+    hf_token: str | None,
+):
+    """Configure Article TTS by creating a unified Runpod endpoint.
+
+    This command creates a Runpod template and deploys a unified endpoint
+    that supports both ChatterboxTurboTTS and VibeVoice models.
+
+    You only need to run this once. The endpoint ID will be saved locally
+    and used for all future synthesis requests.
+
+    Example:
+
+        \b
+        $ article-tts configure
+        Runpod API key: ****
+        Hugging Face token (optional): ****
+        ✓ Configuration complete!
+    """
+    try:
+        console.print("\n[bold cyan]Configuring Article TTS...[/bold cyan]\n")
+
+        # Initialize Runpod manager
+        manager = RunpodManager(api_key=api_key)
+
+        # Create template
+        console.print("[cyan]Creating Runpod template...[/cyan]")
+
+        env_vars = {}
+        if hf_token:
+            env_vars['HF_TOKEN'] = hf_token
+
+        template_name = "article-tts-unified"
+        template_id = manager.create_template(
+            name=template_name,
+            image_name=docker_image,
+            docker_args="python /app/handler.py",
+            container_disk_gb=15,  # More space for both models
+            env_vars=env_vars,
+            readme="Unified Article TTS endpoint supporting ChatterboxTurboTTS and VibeVoice",
+        )
+
+        # Create endpoint
+        console.print("[cyan]Creating Runpod endpoint...[/cyan]")
+
+        endpoint_name = "article-tts-unified-endpoint"
+        endpoint_id = manager.create_endpoint(
+            name=endpoint_name,
+            template_id=template_id,
+            gpu_ids=gpu_type,
+            workers_min=0,
+            workers_max=workers_max,
+            idle_timeout=5,
+        )
+
+        # Save configuration
+        config = Config()
+        config.update({
+            'api_key': api_key,
+            'endpoint_id': endpoint_id,
+            'template_id': template_id,
+            'docker_image': docker_image,
+            'gpu_type': gpu_type,
+        })
+
+        console.print(f"\n[bold green]✓ Configuration complete![/bold green]")
+        console.print(f"[green]Endpoint ID: {endpoint_id}[/green]")
+        console.print(f"[green]Config saved to: {config.config_file}[/green]")
+        console.print("\n[cyan]You can now use 'article-tts speak' to generate audio![/cyan]\n")
+
+    except Exception as e:
+        console.print(f"[red]Configuration failed: {e}[/red]")
+        raise click.Abort()
 
 
 @cli.command()
@@ -83,16 +194,6 @@ def cli():
     type=click.Path(exists=True),
     help='Voice sample for VibeVoice (optional)'
 )
-@click.option(
-    '--runpod-api-key',
-    envvar='RUNPOD_API_KEY',
-    help='Runpod API key (for Chatterbox)'
-)
-@click.option(
-    '--runpod-endpoint-id',
-    envvar='RUNPOD_ENDPOINT_ID',
-    help='Runpod endpoint ID (for Chatterbox)'
-)
 def speak(
     text: str | None,
     file: str | None,
@@ -103,8 +204,6 @@ def speak(
     bitrate: str,
     play: bool,
     voice_sample: str | None,
-    runpod_api_key: str | None,
-    runpod_endpoint_id: str | None,
 ):
     """Generate speech from text using the specified model.
 
@@ -164,38 +263,48 @@ def speak(
         wav_output = output_path
 
     try:
+        # Check if configured
+        config = Config()
+        if not config.is_configured():
+            console.print(
+                "[red]Error: Article TTS is not configured.[/red]\n\n"
+                "Please run 'article-tts configure' first to set up your Runpod endpoint.\n\n"
+                "Example:\n"
+                "  $ article-tts configure\n"
+            )
+            raise click.Abort()
+
+        # Get configuration
+        api_key = config.get_api_key()
+        endpoint_id = config.get_endpoint_id()
+
+        if not api_key or not endpoint_id:
+            console.print(
+                "[red]Error: Configuration is incomplete.[/red]\n"
+                "Please run 'article-tts configure' again."
+            )
+            raise click.Abort()
+
         # Synthesize speech based on model
         if model.lower() == 'chatterbox':
             console.print("[bold cyan]Using ChatterboxTurboTTS[/bold cyan]")
 
-            if not runpod_api_key or not runpod_endpoint_id:
-                console.print(
-                    "[red]Error: Runpod credentials required for Chatterbox.[/red]\n"
-                    "Set RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID environment variables "
-                    "or pass them as options."
-                )
-                raise click.Abort()
-
-            chatterbox = ChatterboxModel(
-                api_key=runpod_api_key,
-                endpoint_id=runpod_endpoint_id,
+            tts_model = ChatterboxModel(
+                api_key=api_key,
+                endpoint_id=endpoint_id,
             )
 
-            chatterbox.synthesize(text, wav_output)
+            tts_model.synthesize(text, wav_output)
 
         elif model.lower() == 'vibevoice':
-            console.print("[bold cyan]Using VibeVoice (Runpod)[/bold cyan]")
+            console.print("[bold cyan]Using VibeVoice[/bold cyan]")
 
-            if not runpod_api_key:
-                console.print(
-                    "[red]Error: Runpod API key required for VibeVoice.[/red]\n"
-                    "Set RUNPOD_API_KEY environment variable or pass it as an option."
-                )
-                raise click.Abort()
+            tts_model = VibeVoiceModel(
+                api_key=api_key,
+                endpoint_id=endpoint_id,
+            )
 
-            vibevoice = VibeVoiceModel(api_key=runpod_api_key)
-
-            vibevoice.synthesize(
+            tts_model.synthesize(
                 text,
                 wav_output,
                 voice_sample_path=voice_sample,
@@ -276,47 +385,33 @@ def info():
     console.print("[bold cyan]Article TTS - Model Information[/bold cyan]\n")
 
     console.print("[bold]Available Models:[/bold]")
-    console.print("  • chatterbox - ChatterboxTurboTTS via Runpod (serverless)")
-    console.print("  • vibevoice  - VibeVoice via Runpod (serverless)\n")
+    console.print("  • chatterbox - ChatterboxTurboTTS (fast, 10x speed)")
+    console.print("  • vibevoice  - VibeVoice (voice cloning capable)\n")
 
     console.print("[bold]ChatterboxTurboTTS:[/bold]")
-    console.print("  • Requires: RUNPOD_API_KEY and RUNPOD_ENDPOINT_ID")
     console.print("  • Optimized for speed with 100 token chunks")
     console.print("  • Automatic text splitting for long content")
-    console.print("  • Serverless inference via Runpod\n")
+    console.print("  • Requires Hugging Face token\n")
 
     console.print("[bold]VibeVoice:[/bold]")
-    console.print("  • Requires: RUNPOD_API_KEY")
     console.print("  • Supports custom voice samples for voice cloning")
     console.print("  • Automatic chunking for long text (500 char chunks)")
-    console.print("  • Serverless inference via Runpod")
-    console.print("  • Endpoint auto-created on first use\n")
+    console.print("  • High-quality voice generation\n")
 
-    console.print("[bold]Environment Variables:[/bold]")
-    console.print("  • RUNPOD_API_KEY - Runpod API key (required for both models)")
-    console.print("  • RUNPOD_ENDPOINT_ID - Runpod endpoint ID (required for Chatterbox)")
-    console.print("  • VIBEVOICE_DOCKER_IMAGE - Custom Docker image for VibeVoice (optional)")
-    console.print("  • VIBEVOICE_GPU_TYPE - GPU type for VibeVoice (default: AMPERE_16)")
+    console.print("[bold]Unified Endpoint:[/bold]")
+    console.print("  • Both models run on a single Runpod endpoint")
+    console.print("  • Set up once with 'article-tts configure'")
+    console.print("  • Switch between models with --model flag\n")
 
     # Check current configuration
-    console.print("\n[bold]Current Configuration:[/bold]")
-    runpod_key = os.getenv('RUNPOD_API_KEY')
-    runpod_endpoint = os.getenv('RUNPOD_ENDPOINT_ID')
-    vibevoice_image = os.getenv('VIBEVOICE_DOCKER_IMAGE')
-    vibevoice_gpu = os.getenv('VIBEVOICE_GPU_TYPE')
+    config = Config()
 
-    console.print(
-        f"  • Runpod API Key: {'✓ Set' if runpod_key else '✗ Not set'}"
-    )
-    console.print(
-        f"  • Chatterbox Endpoint: {'✓ Set' if runpod_endpoint else '✗ Not set'}"
-    )
-    console.print(
-        f"  • VibeVoice Docker Image: {vibevoice_image if vibevoice_image else 'Default (tejaskale/vibevoice-runpod:latest)'}"
-    )
-    console.print(
-        f"  • VibeVoice GPU Type: {vibevoice_gpu if vibevoice_gpu else 'Default (AMPERE_16)'}"
-    )
+    if config.is_configured():
+        console.print("[bold green]✓ Configuration Status: Configured[/bold green]")
+        config.display()
+    else:
+        console.print("[bold yellow]✗ Configuration Status: Not Configured[/bold yellow]")
+        console.print("\n[yellow]Run 'article-tts configure' to set up your endpoint.[/yellow]")
 
 
 if __name__ == '__main__':

@@ -1,12 +1,13 @@
 # Article TTS
 
-A unified CLI tool for high-quality text-to-speech synthesis supporting ChatterboxTurboTTS and VibeVoice via Runpod serverless.
+A unified CLI tool for high-quality text-to-speech synthesis supporting ChatterboxTurboTTS and VibeVoice via a single Runpod serverless endpoint.
 
 ## Features
 
-- **Two TTS Models**: ChatterboxTurboTTS and VibeVoice, both running on Runpod serverless
-- **Zero Local Setup**: No GPU or heavy dependencies required
-- **Automatic Deployment**: VibeVoice endpoint created automatically on first use
+- **Unified Endpoint**: Both models run on a single Runpod endpoint
+- **One-Time Setup**: Configure once with `article-tts configure`
+- **Zero Local Dependencies**: No GPU or heavy ML libraries required locally
+- **Two TTS Models**: ChatterboxTurboTTS (fast) and VibeVoice (voice cloning)
 - **Voice Cloning**: Support for custom voice samples with VibeVoice
 - **Intelligent Text Chunking**: Automatically splits long text at sentence boundaries
 - **Speed Control**: Adjust playback speed (0.5x - 2.0x)
@@ -32,105 +33,121 @@ uv tool install .
 
 ## Quick Start
 
-### Prerequisites
+### Step 1: Configure
 
-1. **Runpod Account**: Sign up at [runpod.io](https://runpod.io)
-2. **Get API Key**: Find it in Settings → API Keys
-3. **Set Environment Variables**:
+Run the configuration command to set up your Runpod endpoint:
 
 ```bash
-export RUNPOD_API_KEY="your-api-key"
+article-tts configure
 ```
 
-### ChatterboxTurboTTS
+You'll be prompted for:
+- **Runpod API Key** (required) - Get from [runpod.io](https://runpod.io) Settings → API Keys
+- **Hugging Face Token** (optional) - Required only for ChatterboxTurboTTS
 
-For Chatterbox, you also need an endpoint ID:
+This creates a unified endpoint that supports both models. Configuration is saved locally at `~/.article-tts/config.json`.
+
+### Step 2: Generate Speech
+
+Once configured, you can start generating speech:
 
 ```bash
-export RUNPOD_ENDPOINT_ID="your-chatterbox-endpoint-id"
-```
-
-Then generate speech:
-
-```bash
-# From text argument
+# Use ChatterboxTurboTTS (fast)
 article-tts speak "Hello, world!" -m chatterbox
 
-# From file
-article-tts speak -f article.txt -m chatterbox
-
-# Custom output and format
-article-tts speak -f article.txt -o output.mp3 --format mp3
-```
-
-### VibeVoice (Automatic Setup)
-
-VibeVoice automatically creates and deploys the endpoint on first use:
-
-```bash
-# Basic usage (endpoint auto-created)
+# Use VibeVoice (voice cloning)
 article-tts speak "Hello, world!" -m vibevoice
 
-# With custom voice sample
+# From a file
+article-tts speak -f article.txt -m chatterbox
+
+# With custom voice
 article-tts speak -f article.txt -m vibevoice --voice-sample voice.wav
-
-# Adjust speed and format
-article-tts speak -f article.txt -m vibevoice --speed 1.0 --format mp3
 ```
-
-The first run will:
-1. Create a template named "article-tts-vibevoice"
-2. Deploy an endpoint named "article-tts-vibevoice-endpoint"
-3. Start synthesis once ready
-
-Subsequent runs use the existing endpoint instantly.
 
 ## Usage
 
-### Basic Commands
+### Commands
+
+#### `configure`
+
+Set up the Runpod endpoint (run this once):
 
 ```bash
-# Generate speech
-article-tts speak [TEXT] [OPTIONS]
-
-# Preprocess and validate text
-article-tts preprocess [TEXT] [OPTIONS]
-
-# Display model information
-article-tts info
+article-tts configure [OPTIONS]
 ```
 
-### Options
+**Options:**
+- `--api-key` - Runpod API key (or set `RUNPOD_API_KEY`)
+- `--docker-image` - Custom Docker image (default: `tejaskale/article-tts-unified:latest`)
+- `--gpu-type` - GPU type: AMPERE_16, AMPERE_24, AMPERE_48, ADA_24 (default: AMPERE_16)
+- `--workers-max` - Maximum workers (default: 1)
+- `--hf-token` - Hugging Face token for Chatterbox (or set `HF_TOKEN`)
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `--model, -m` | Model to use (`chatterbox` or `vibevoice`) | `chatterbox` |
-| `--file, -f` | Read text from file | - |
-| `--output, -o` | Output file path | `/tmp/article_tts_<timestamp>.wav` |
-| `--format` | Output format (`wav` or `mp3`) | `wav` |
-| `--speed, -s` | Playback speed multiplier | `0.85` |
-| `--bitrate, -b` | MP3 bitrate (`128k`, `192k`, `320k`) | `192k` |
-| `--play/--no-play` | Auto-play generated audio | `enabled` |
-| `--voice-sample` | Voice sample for VibeVoice (optional) | - |
-| `--runpod-api-key` | Runpod API key | `$RUNPOD_API_KEY` |
-| `--runpod-endpoint-id` | Runpod endpoint ID (Chatterbox) | `$RUNPOD_ENDPOINT_ID` |
+**Example:**
+```bash
+# Interactive (prompts for API key)
+article-tts configure
 
-### Examples
+# With environment variables
+export RUNPOD_API_KEY="your-key"
+export HF_TOKEN="your-hf-token"
+article-tts configure
+
+# With custom GPU
+article-tts configure --gpu-type AMPERE_24
+```
+
+#### `speak`
+
+Generate speech from text:
 
 ```bash
+article-tts speak [TEXT] [OPTIONS]
+```
+
+**Options:**
+- `--file, -f` - Read text from file
+- `--model, -m` - Model: `chatterbox` or `vibevoice` (default: chatterbox)
+- `--output, -o` - Output path (default: `/tmp/article_tts_<timestamp>.wav`)
+- `--format` - Output format: `wav` or `mp3` (default: wav)
+- `--speed, -s` - Playback speed multiplier (default: 0.85)
+- `--bitrate, -b` - MP3 bitrate: 128k, 192k, 320k (default: 192k)
+- `--play/--no-play` - Auto-play audio (default: enabled)
+- `--voice-sample` - Voice sample for VibeVoice cloning
+
+**Examples:**
+```bash
+# ChatterboxTurboTTS from text
+article-tts speak "Hello, world!" -m chatterbox
+
+# VibeVoice from file with custom voice
+article-tts speak -f article.txt -m vibevoice --voice-sample my_voice.wav
+
 # Generate MP3 at normal speed
-article-tts speak -f article.txt --format mp3 --speed 1.0
+article-tts speak -f book.txt --format mp3 --speed 1.0
 
-# Use custom voice with VibeVoice
-article-tts speak "Hello!" -m vibevoice --voice-sample my_voice.wav
+# Save without auto-play
+article-tts speak -f article.txt -o ~/audio/output.wav --no-play
+```
 
-# Save to custom location without auto-play
-article-tts speak -f book.txt -o ~/audiobooks/chapter1.wav --no-play
+#### `preprocess`
 
-# Preprocess text to see what will be synthesized
+Preview how text will be processed:
+
+```bash
+article-tts preprocess [TEXT] [OPTIONS]
+
+# Examples
+article-tts preprocess "Hello, world!"
 article-tts preprocess -f article.txt
+```
 
-# Check model availability and configuration
+#### `info`
+
+Display model information and configuration status:
+
+```bash
 article-tts info
 ```
 
@@ -138,121 +155,146 @@ article-tts info
 
 ### ChatterboxTurboTTS
 
-**Advantages:**
-- Extremely fast inference (10x faster than standard)
-- Optimized for speed and efficiency
-- Requires pre-configured endpoint
+**Best for:** Speed and efficiency
 
-**Requirements:**
-- `RUNPOD_API_KEY`
-- `RUNPOD_ENDPOINT_ID` (your Chatterbox endpoint)
+**Features:**
+- 10x faster than standard TTS models
+- Optimized 100-token chunking
+- Automatic text splitting
+- Requires Hugging Face token
 
-**Optimizations:**
-- Text split at sentence boundaries with 100 token limit
-- Automatic audio concatenation for seamless output
-- Efficient serverless execution
+**Use when:**
+- You need fast audio generation
+- Quality is good enough
+- You have many texts to process
 
 ### VibeVoice
 
-**Advantages:**
-- Custom voice cloning with voice samples
+**Best for:** Voice cloning and quality
+
+**Features:**
+- Custom voice sample support
 - High-quality voice generation
-- Automatic endpoint deployment
-- No manual setup required
+- 500-character smart chunking
+- Automatic speaker labeling
 
-**Requirements:**
-- `RUNPOD_API_KEY` only
-
-**Optimizations:**
-- Intelligent chunking for long text (500 character chunks)
-- Automatic speaker label injection
-- Seamless audio concatenation
-- Auto-deployment on first use
+**Use when:**
+- You want to clone a specific voice
+- Audio quality is paramount
+- You have a voice sample (3-10 seconds)
 
 ## Configuration
 
-### Environment Variables
+### Configuration File
 
-Create a `.env` file in your working directory:
+Configuration is stored at `~/.article-tts/config.json`:
 
-```bash
-# Required for both models
-RUNPOD_API_KEY=your-api-key-here
-
-# Required for Chatterbox only
-RUNPOD_ENDPOINT_ID=your-chatterbox-endpoint-id
-
-# Optional for VibeVoice
-VIBEVOICE_DOCKER_IMAGE=tejaskale/vibevoice-runpod:latest
-VIBEVOICE_GPU_TYPE=AMPERE_16
+```json
+{
+  "api_key": "your-runpod-api-key",
+  "endpoint_id": "xyz123",
+  "template_id": "abc456",
+  "docker_image": "tejaskale/article-tts-unified:latest",
+  "gpu_type": "AMPERE_16"
+}
 ```
 
-Or set them in your shell:
+### Environment Variables
+
+Alternatively, set these environment variables:
 
 ```bash
+# Required for configuration
 export RUNPOD_API_KEY="your-api-key"
-export RUNPOD_ENDPOINT_ID="your-endpoint-id"  # Chatterbox only
+
+# Optional for ChatterboxTurboTTS
+export HF_TOKEN="your-hugging-face-token"
 ```
 
 ### GPU Types
 
-For VibeVoice, you can customize the GPU type:
+Choose based on your performance/cost needs:
 
-- `AMPERE_16` - RTX 3060, A2000, A4000 (default, cost-effective)
-- `AMPERE_24` - RTX 3070/3080/3090
-- `AMPERE_48` - A40, RTX A6000
+- `AMPERE_16` - RTX 3060, A2000, A4000 (~$0.14/hour) **Recommended**
+- `AMPERE_24` - RTX 3070/3080/3090 (~$0.20/hour)
+- `AMPERE_48` - A40, RTX A6000 (~$0.35/hour)
 - `ADA_24` - L4, RTX 4000 series
 
-```bash
-export VIBEVOICE_GPU_TYPE="AMPERE_24"
-```
+Serverless workers scale to zero when idle - you only pay for active inference time.
 
 ### Voice Samples (VibeVoice)
 
-For best results with voice cloning:
-- Use clean audio samples (3-10 seconds)
-- WAV format recommended
-- Clear speech without background noise
-- Sample rate of 16kHz or higher
+For best voice cloning results:
+- Duration: 3-10 seconds of clear speech
+- Format: WAV (recommended) or MP3
+- Quality: 16kHz+ sample rate, no background noise
+- Content: Natural speech, not reading
 
 ## Architecture
+
+### Unified Endpoint
+
+Both models run in a single Docker container on Runpod:
+
+```
+┌─────────────────────────────────────┐
+│   Unified Runpod Endpoint           │
+│                                      │
+│  ┌────────────────┐ ┌─────────────┐│
+│  │ ChatterboxTTS  │ │ VibeVoice   ││
+│  │  (100 tokens)  │ │ (500 chars) ││
+│  └────────────────┘ └─────────────┘│
+│                                      │
+│  Handler routes based on model param│
+└─────────────────────────────────────┘
+           ▲
+           │ HTTPS API
+           │
+    ┌──────┴───────┐
+    │  article-tts │
+    │      CLI      │
+    └──────────────┘
+```
 
 ### Project Structure
 
 ```
-article-tts/
+tts-playground/
 ├── src/article_tts/
-│   ├── __init__.py           # Package initialization
-│   ├── cli.py                # CLI interface
-│   ├── utils.py              # Shared utilities
-│   ├── runpod_manager.py     # Runpod API management
+│   ├── __init__.py
+│   ├── cli.py               # CLI commands
+│   ├── config.py            # Configuration management
+│   ├── runpod_manager.py    # Runpod API integration
+│   ├── utils.py             # Shared utilities
 │   └── models/
-│       ├── __init__.py       # Model exports
-│       ├── chatterbox.py     # ChatterboxTurboTTS client
-│       └── vibevoice.py      # VibeVoice client
+│       ├── __init__.py
+│       └── base.py          # Unified model clients
 ├── runpod_deployments/
-│   └── vibevoice/
-│       ├── handler.py        # Runpod serverless handler
-│       ├── Dockerfile        # Container image
-│       └── requirements.txt  # Handler dependencies
-├── pyproject.toml            # Project configuration
-└── README.md                 # This file
+│   └── unified/
+│       ├── handler.py       # Unified serverless handler
+│       ├── Dockerfile       # Container with both models
+│       └── requirements.txt # Handler dependencies
+├── pyproject.toml
+└── README.md
 ```
 
 ### How It Works
 
-1. **ChatterboxTurboTTS**:
-   - Uses your pre-configured Runpod endpoint
-   - Splits text into 100-token chunks
-   - Sends chunks to Runpod for inference
-   - Concatenates audio on client-side
+1. **First Run**: `article-tts configure`
+   - Creates Runpod template via GraphQL API
+   - Deploys endpoint with unified Docker image
+   - Saves endpoint ID to `~/.article-tts/config.json`
 
-2. **VibeVoice**:
-   - First run: Creates template and endpoint via GraphQL API
-   - Uses Docker image `tejaskale/vibevoice-runpod:latest`
-   - VibeVoice package installed in container automatically
-   - Handles text chunking (500 chars) on server-side
-   - Returns complete audio via API
+2. **Synthesis**: `article-tts speak`
+   - Reads endpoint ID from config
+   - Sends request with `model` parameter
+   - Handler routes to appropriate model
+   - Returns generated audio
+
+3. **Model Selection**:
+   - Request includes `"model": "chatterbox"` or `"vibevoice"`
+   - Handler loads appropriate model (cached after first use)
+   - Model-specific optimizations applied server-side
 
 ## Development
 
@@ -262,27 +304,25 @@ article-tts/
 git clone https://github.com/tejas-kale/tts-playground.git
 cd tts-playground
 
-# Install with uv
+# Install with dev dependencies
 uv pip install -e ".[dev]"
-
-# Or with pip
-pip install -e ".[dev]"
 ```
 
-### Building VibeVoice Docker Image
+### Building the Unified Docker Image
 
-If you want to build your own VibeVoice image:
-
-```bash
-cd runpod_deployments/vibevoice
-docker build -t your-username/vibevoice-runpod:latest .
-docker push your-username/vibevoice-runpod:latest
-```
-
-Then use it:
+To build and push your own image:
 
 ```bash
-export VIBEVOICE_DOCKER_IMAGE="your-username/vibevoice-runpod:latest"
+cd runpod_deployments/unified
+
+# Build
+docker build -t your-username/article-tts-unified:latest .
+
+# Push
+docker push your-username/article-tts-unified:latest
+
+# Use in configuration
+article-tts configure --docker-image your-username/article-tts-unified:latest
 ```
 
 ### Run Tests
@@ -298,69 +338,77 @@ black src/
 ruff check src/
 ```
 
+## Troubleshooting
+
+### Configuration Issues
+
+**"Article TTS is not configured"**
+- Run `article-tts configure` first
+- Check that `~/.article-tts/config.json` exists
+
+**"Configuration is incomplete"**
+- Delete `~/.article-tts/config.json`
+- Run `article-tts configure` again
+
+**"Template creation failed"**
+- Verify your Runpod API key has permissions
+- Check Runpod status page for outages
+- Try a different GPU type
+
+### Synthesis Issues
+
+**"Job timed out after 10 minutes"**
+- Text may be too long - try shorter segments
+- Check Runpod endpoint status in console
+- Endpoint may be cold-starting (first request takes longer)
+
+**ChatterboxTurboTTS errors**
+- Ensure HF_TOKEN was provided during configuration
+- Check Hugging Face token has access to Chatterbox model
+- Reconfigure with correct token
+
+**VibeVoice voice cloning issues**
+- Use clean voice samples (no background noise)
+- Try samples between 3-10 seconds
+- WAV format recommended over MP3
+- Higher sample rate (16kHz+) works better
+
+### General Issues
+
+**"Endpoint not found"**
+- Check endpoint exists in Runpod console
+- Run `article-tts configure` to create new endpoint
+- Verify endpoint ID in `~/.article-tts/config.json`
+
+**Cold start delays (2-3 minutes)**
+- Normal for first request or after idle timeout
+- Subsequent requests are fast (model cached)
+- Increase idle timeout or min workers to keep warm
+
 ## Output Location
 
-By default, audio files are saved to `/tmp` with timestamps:
-```
-/tmp/article_tts_20250130_143022.wav
-```
+Default: `/tmp/article_tts_<timestamp>.wav`
 
-Specify a custom output location with `-o`:
+Custom location:
 ```bash
 article-tts speak -f article.txt -o ~/audio/output.wav
 ```
 
-## Troubleshooting
-
-### General Issues
-
-**"Runpod API key required"**
-- Set `RUNPOD_API_KEY` environment variable
-- Or pass `--runpod-api-key` option
-
-### ChatterboxTurboTTS Issues
-
-**"Runpod credentials required"**
-- Ensure both `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID` are set
-- Verify your endpoint exists in Runpod console
-
-**"Job timed out"**
-- Check Runpod endpoint status
-- Ensure endpoint has workers available
-- Try shorter text
-
-### VibeVoice Issues
-
-**"Template creation failed"**
-- Check your Runpod API key has permissions
-- Verify network connectivity
-- Check Runpod status page
-
-**"Endpoint not starting"**
-- May take 2-3 minutes on first run (cold start)
-- Check Runpod console for endpoint status
-- Try a different GPU type if unavailable
-
-**"Audio quality issues with voice samples"**
-- Use higher quality voice samples (16kHz+)
-- Ensure sample is clean (no background noise)
-- Try samples between 3-10 seconds
-- WAV format recommended
-
-**"Job timed out after 10 minutes"**
-- Text may be too long
-- Try shorter text or manual chunking
-- Check Runpod endpoint logs
-
 ## Cost Estimation
 
-Runpod serverless pricing varies by GPU:
+**Runpod Serverless Pricing** (approximate):
 
-- **AMPERE_16** (RTX 3060): ~$0.14/hour
-- **AMPERE_24** (RTX 3080): ~$0.20/hour
-- **AMPERE_48** (A40): ~$0.35/hour
+| GPU Type | Cost/Hour | Best For |
+|----------|-----------|----------|
+| AMPERE_16 | ~$0.14 | General use (recommended) |
+| AMPERE_24 | ~$0.20 | Faster processing |
+| AMPERE_48 | ~$0.35 | High concurrency |
+| ADA_24 | Varies | Latest architecture |
 
-Serverless workers scale to zero when idle, so you only pay for active inference time.
+**Serverless benefits:**
+- Scale to zero when idle (no cost)
+- Pay only for active inference time
+- Typical synthesis: $0.001-0.01 per request
 
 ## License
 
@@ -368,13 +416,13 @@ MIT License - See LICENSE file for details
 
 ## Credits
 
-- **ChatterboxTurboTTS**: Based on the Chatterbox model
-- **VibeVoice**: Based on the VibeVoice project
+- **ChatterboxTurboTTS**: High-speed TTS model
+- **VibeVoice**: Voice cloning capable TTS
 - **Runpod**: Serverless GPU infrastructure
 
 ## Contributing
 
-Contributions are welcome! Please:
+Contributions welcome! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
@@ -386,11 +434,11 @@ Contributions are welcome! Please:
 - [Issue Tracker](https://github.com/tejas-kale/tts-playground/issues)
 - [VibeVoice Repository](https://github.com/tejas-kale/VibeVoice)
 - [Runpod Platform](https://runpod.io)
+- [Runpod Documentation](https://docs.runpod.io)
 
 ## References
 
-Based on research from:
-- [Runpod Documentation - Manage Templates](https://docs.runpod.io/sdks/graphql/manage-pod-templates)
-- [Runpod Documentation - Manage Endpoints](https://docs.runpod.io/sdks/graphql/manage-endpoints)
+Implementation based on:
+- [Runpod GraphQL API - Manage Templates](https://docs.runpod.io/sdks/graphql/manage-pod-templates)
+- [Runpod GraphQL API - Manage Endpoints](https://docs.runpod.io/sdks/graphql/manage-endpoints)
 - [RunPod Python SDK](https://github.com/runpod/runpod-python)
-- [RunPod GraphQL API Spec](https://graphql-spec.runpod.io/)
