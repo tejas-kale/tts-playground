@@ -69,12 +69,18 @@ def cli():
     envvar='HF_TOKEN',
     help='Hugging Face token (required for Chatterbox)',
 )
+@click.option(
+    '--show-status/--no-show-status',
+    default=False,
+    help='Monitor endpoint deployment and startup status (blocking)',
+)
 def configure(
     api_key: str,
     docker_image: str,
     gpu_type: str,
     workers_max: int,
     hf_token: str | None,
+    show_status: bool,
 ):
     """Configure Article TTS by creating a unified Runpod endpoint.
 
@@ -152,7 +158,14 @@ def configure(
         console.print(f"\n[bold green]✓ Configuration complete![/bold green]")
         console.print(f"[green]Endpoint ID: {endpoint_id}[/green]")
         console.print(f"[green]Config saved to: {config.config_file}[/green]")
-        console.print("\n[cyan]You can now use 'article-tts speak' to generate audio![/cyan]\n")
+
+        # Monitor deployment if requested
+        if show_status:
+            console.print("\n[cyan]Monitoring endpoint deployment...[/cyan]")
+            manager.monitor_endpoint_startup(endpoint_id)
+        else:
+            console.print("\n[cyan]You can now use 'article-tts speak' to generate audio![/cyan]\n")
+            console.print("[yellow]Note: First request may take 3-5 minutes as the container installs dependencies.[/yellow]\n")
 
     except Exception as e:
         console.print(f"[red]Configuration failed: {e}[/red]")

@@ -83,6 +83,7 @@ article-tts configure [OPTIONS]
 - `--gpu-type` - GPU type: AMPERE_16, AMPERE_24, AMPERE_48, ADA_24 (default: AMPERE_16)
 - `--workers-max` - Maximum workers (default: 1)
 - `--hf-token` - Hugging Face token for Chatterbox (or set `HF_TOKEN`)
+- `--show-status` - Monitor endpoint deployment and startup status (blocking)
 
 **Example:**
 ```bash
@@ -96,6 +97,9 @@ article-tts configure
 
 # With custom GPU
 article-tts configure --gpu-type AMPERE_24
+
+# Monitor deployment status (blocking)
+article-tts configure --show-status
 ```
 
 #### `speak`
@@ -396,6 +400,7 @@ ruff check src/
 - Normal for first request or after idle timeout
 - Subsequent requests are fast (model cached)
 - Increase idle timeout or min workers to keep warm
+- Use `article-tts configure --show-status` to monitor deployment progress
 
 ## Output Location
 

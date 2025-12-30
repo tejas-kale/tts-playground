@@ -24,6 +24,8 @@ This approach:
 - ✅ Simpler deployment process
 - ⚠️ First cold start takes 3-5 minutes (subsequent starts are fast with cached models)
 
+**Tip:** Use `article-tts configure --show-status` to monitor deployment progress in real-time.
+
 ## Alternative: Pre-built Docker Image
 
 If you prefer faster cold starts, you can build a custom image:
