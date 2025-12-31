@@ -204,7 +204,7 @@ def synthesize_vibevoice_chunk(
 
     # Generate
     with torch.no_grad():
-        output = model.generate(**inputs, max_length=max_length)
+        output = model.generate(**inputs, tokenizer=processor.tokenizer, max_length=max_length)
 
     # Convert to numpy
     if torch.is_tensor(output):

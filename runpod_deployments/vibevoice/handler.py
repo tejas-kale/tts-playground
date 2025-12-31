@@ -127,7 +127,7 @@ def synthesize_chunk(
 
     # Generate audio
     with torch.no_grad():
-        output = tts_model.generate(**inputs, max_length=max_length)
+        output = tts_model.generate(**inputs, tokenizer=tts_processor.tokenizer, max_length=max_length)
 
     # Convert to numpy
     if torch.is_tensor(output):
