@@ -43,7 +43,7 @@ def load_model():
             )
 
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        model_name = os.getenv("VIBEVOICE_MODEL", "seshurajup/VibeVoice")
+        model_name = os.getenv("VIBEVOICE_MODEL", "microsoft/VibeVoice-1.5B")
 
         print(f"Loading VibeVoice model '{model_name}' on {device}...")
 

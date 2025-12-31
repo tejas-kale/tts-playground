@@ -54,7 +54,7 @@ def load_vibevoice():
         )
         from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
 
-        model_name = os.getenv("VIBEVOICE_MODEL", "seshurajup/VibeVoice")
+        model_name = os.getenv("VIBEVOICE_MODEL", "microsoft/VibeVoice-1.5B")
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         print(f"Loading VibeVoice model '{model_name}' on {device}...")

@@ -123,7 +123,7 @@ Both models are loaded on cold start and cached for subsequent requests:
 Set these when creating the template:
 
 - `HF_TOKEN` - Hugging Face token (required for Chatterbox)
-- `VIBEVOICE_MODEL` - VibeVoice model name (optional, default: "seshurajup/VibeVoice")
+- `VIBEVOICE_MODEL` - VibeVoice model name (optional, default: "microsoft/VibeVoice-1.5B")
 
 ## GPU Requirements
 
