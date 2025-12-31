@@ -117,7 +117,7 @@ def configure(
             "apt-get update && "
             "apt-get install -y git ffmpeg libsndfile1 && "
             "pip install runpod chatterbox-tts soundfile pydub torchaudio accelerate && "
-            "git clone https://github.com/microsoft/VibeVoice.git /tmp/VibeVoice && "
+            "git clone https://github.com/vibevoice-community/VibeVoice.git /tmp/VibeVoice && "
             "cd /tmp/VibeVoice && pip install -e . && cd / && "
             "wget -O /handler.py https://raw.githubusercontent.com/tejas-kale/tts-playground/main/runpod_deployments/unified/handler.py && "
             "python /handler.py"
