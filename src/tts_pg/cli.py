@@ -1,4 +1,4 @@
-"""Command-line interface for Article TTS."""
+"""Command-line interface for TTS Playground."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ import click
 from dotenv import load_dotenv
 from rich.console import Console
 
-from article_tts import __version__
-from article_tts.config import Config
-from article_tts.models import ChatterboxModel, VibeVoiceModel
-from article_tts.runpod_manager import RunpodManager
-from article_tts.utils import (
+from tts_pg import __version__
+from tts_pg.config import Config
+from tts_pg.models import ChatterboxModel, VibeVoiceModel
+from tts_pg.runpod_manager import RunpodManager
+from tts_pg.utils import (
     adjust_speed,
     convert_to_mp3,
     ensure_output_dir,
@@ -30,9 +30,9 @@ console = Console()
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="article-tts")
+@click.version_option(version=__version__, prog_name="tts-pg")
 def cli():
-    """Article TTS - Unified CLI for text-to-speech synthesis.
+    """TTS Playground - Unified CLI for text-to-speech synthesis.
 
     Supports ChatterboxTurboTTS and VibeVoice via Runpod serverless.
     """
@@ -82,7 +82,7 @@ def configure(
     hf_token: str | None,
     show_status: bool,
 ):
-    """Configure Article TTS by creating a unified Runpod endpoint.
+    """Configure TTS Playground by creating a unified Runpod endpoint.
 
     This command creates a Runpod template and deploys a unified endpoint
     that supports both ChatterboxTurboTTS and VibeVoice models.
@@ -93,13 +93,13 @@ def configure(
     Example:
 
         \b
-        $ article-tts configure
+        $ tts-pg configure
         Runpod API key: ****
         Hugging Face token (optional): ****
         ✓ Configuration complete!
     """
     try:
-        console.print("\n[bold cyan]Configuring Article TTS...[/bold cyan]\n")
+        console.print("\n[bold cyan]Configuring TTS Playground...[/bold cyan]\n")
 
         # Initialize Runpod manager
         manager = RunpodManager(api_key=api_key)
@@ -118,24 +118,24 @@ def configure(
             "pip install runpod chatterbox-tts soundfile pydub torchaudio accelerate && "
             "git clone https://github.com/tejas-kale/VibeVoice.git /tmp/VibeVoice && "
             "cd /tmp/VibeVoice && pip install -e . && cd / && "
-            "wget -O /handler.py https://raw.githubusercontent.com/tejas-kale/tts-playground/claude/chatterbox-uv-tool-EBZ91/runpod_deployments/unified/handler.py && "
+            "wget -O /handler.py https://raw.githubusercontent.com/tejas-kale/tts-playground/main/runpod_deployments/unified/handler.py && "
             "python /handler.py"
         )
 
-        template_name = "article-tts-unified"
+        template_name = "tts-pg-unified"
         template_id = manager.create_template(
             name=template_name,
             image_name=docker_image,
             docker_args=docker_args,
             container_disk_gb=20,  # More space for installations
             env_vars=env_vars,
-            readme="Unified Article TTS endpoint supporting ChatterboxTurboTTS and VibeVoice",
+            readme="Unified TTS Playground endpoint supporting ChatterboxTurboTTS and VibeVoice",
         )
 
         # Create endpoint
         console.print("[cyan]Creating Runpod endpoint...[/cyan]")
 
-        endpoint_name = "article-tts-unified-endpoint"
+        endpoint_name = "tts-pg-unified-endpoint"
         endpoint_id = manager.create_endpoint(
             name=endpoint_name,
             template_id=template_id,
@@ -164,7 +164,7 @@ def configure(
             console.print("\n[cyan]Monitoring endpoint deployment...[/cyan]")
             manager.monitor_endpoint_startup(endpoint_id)
         else:
-            console.print("\n[cyan]You can now use 'article-tts speak' to generate audio![/cyan]\n")
+            console.print("\n[cyan]You can now use 'tts-pg speak' to generate audio![/cyan]\n")
             console.print("[yellow]Note: First request may take 3-5 minutes as the container installs dependencies.[/yellow]\n")
 
     except Exception as e:
@@ -188,7 +188,7 @@ def configure(
 @click.option(
     '--output', '-o',
     type=click.Path(),
-    help='Output file path (default: /tmp/article_tts_<timestamp>.wav)'
+    help='Output file path (default: /tmp/tts_pg_<timestamp>.wav)'
 )
 @click.option(
     '--format',
@@ -235,19 +235,19 @@ def speak(
 
         \b
         # Use Chatterbox with text argument
-        $ article-tts speak "Hello, world!" -m chatterbox
+        $ tts-pg speak "Hello, world!" -m chatterbox
 
         \b
         # Use VibeVoice with file input
-        $ article-tts speak -f article.txt -m vibevoice
+        $ tts-pg speak -f article.txt -m vibevoice
 
         \b
         # Generate MP3 at custom speed
-        $ article-tts speak -f article.txt --format mp3 --speed 1.0
+        $ tts-pg speak -f article.txt --format mp3 --speed 1.0
 
         \b
         # Use custom voice with VibeVoice
-        $ article-tts speak -f article.txt -m vibevoice --voice-sample voice.wav
+        $ tts-pg speak -f article.txt -m vibevoice --voice-sample voice.wav
     """
     # Validate input
     if not text and not file:
@@ -275,7 +275,7 @@ def speak(
     # Generate output filename if not specified
     if not output:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output = f"/tmp/article_tts_{timestamp}.wav"
+        output = f"/tmp/tts_pg_{timestamp}.wav"
 
     output_path = Path(output)
     ensure_output_dir(output_path)
@@ -291,10 +291,10 @@ def speak(
         config = Config()
         if not config.is_configured():
             console.print(
-                "[red]Error: Article TTS is not configured.[/red]\n\n"
-                "Please run 'article-tts configure' first to set up your Runpod endpoint.\n\n"
+                "[red]Error: TTS Playground is not configured.[/red]\n\n"
+                "Please run 'tts-pg configure' first to set up your Runpod endpoint.\n\n"
                 "Example:\n"
-                "  $ article-tts configure\n"
+                "  $ tts-pg configure\n"
             )
             raise click.Abort()
 
@@ -305,7 +305,7 @@ def speak(
         if not api_key or not endpoint_id:
             console.print(
                 "[red]Error: Configuration is incomplete.[/red]\n"
-                "Please run 'article-tts configure' again."
+                "Please run 'tts-pg configure' again."
             )
             raise click.Abort()
 
@@ -406,7 +406,7 @@ def preprocess(text: str | None, file: str | None):
 @cli.command()
 def info():
     """Display information about available models and configuration."""
-    console.print("[bold cyan]Article TTS - Model Information[/bold cyan]\n")
+    console.print("[bold cyan]TTS Playground - Model Information[/bold cyan]\n")
 
     console.print("[bold]Available Models:[/bold]")
     console.print("  • chatterbox - ChatterboxTurboTTS (fast, 10x speed)")
@@ -424,7 +424,7 @@ def info():
 
     console.print("[bold]Unified Endpoint:[/bold]")
     console.print("  • Both models run on a single Runpod endpoint")
-    console.print("  • Set up once with 'article-tts configure'")
+    console.print("  • Set up once with 'tts-pg configure'")
     console.print("  • Switch between models with --model flag\n")
 
     # Check current configuration
@@ -435,7 +435,7 @@ def info():
         config.display()
     else:
         console.print("[bold yellow]✗ Configuration Status: Not Configured[/bold yellow]")
-        console.print("\n[yellow]Run 'article-tts configure' to set up your endpoint.[/yellow]")
+        console.print("\n[yellow]Run 'tts-pg configure' to set up your endpoint.[/yellow]")
 
 
 if __name__ == '__main__':

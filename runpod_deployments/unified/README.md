@@ -1,4 +1,4 @@
-# Unified Article TTS Runpod Deployment
+# Unified TTS Playground Runpod Deployment
 
 This directory contains the unified Runpod serverless deployment that supports both ChatterboxTurboTTS and VibeVoice models in a single endpoint.
 

@@ -1,4 +1,4 @@
-"""Base model class for unified Runpod TTS."""
+"""VibeVoice model implementation using Runpod serverless."""
 
 from __future__ import annotations
 
@@ -13,36 +13,45 @@ from rich.console import Console
 console = Console()
 
 
-class UnifiedTTSModel:
-    """Unified TTS model client for Runpod serverless inference."""
+class VibeVoiceModel:
+    """VibeVoice model client for Runpod serverless inference."""
 
     def __init__(
         self,
-        model_name: str,
         api_key: str | None = None,
         endpoint_id: str | None = None,
+        docker_image: str | None = None,
+        auto_setup: bool = True,
     ):
-        """Initialize the TTS client.
+        """Initialize the VibeVoice client.
 
         Args:
-            model_name: Model to use ('chatterbox' or 'vibevoice')
             api_key: Runpod API key (or set RUNPOD_API_KEY env var)
-            endpoint_id: Runpod endpoint ID
+            endpoint_id: Runpod endpoint ID (or auto-created if auto_setup=True)
+            docker_image: Docker image for VibeVoice deployment
+            auto_setup: Automatically create template and endpoint if needed
         """
-        self.model_name = model_name.lower()
         self.api_key = api_key or os.getenv('RUNPOD_API_KEY')
-        self.endpoint_id = endpoint_id
-
         if not self.api_key:
             raise ValueError(
                 "Runpod API key required. Set RUNPOD_API_KEY environment "
                 "variable or pass it as an argument."
             )
 
-        if not self.endpoint_id:
+        self.docker_image = docker_image or os.getenv(
+            'VIBEVOICE_DOCKER_IMAGE',
+            'tejaskale/vibevoice-runpod:latest'
+        )
+
+        # Get or create endpoint
+        if endpoint_id:
+            self.endpoint_id = endpoint_id
+        elif auto_setup:
+            console.print("[cyan]Setting up VibeVoice endpoint...[/cyan]")
+            self.endpoint_id = self._setup_endpoint()
+        else:
             raise ValueError(
-                "Runpod endpoint ID required. Run 'article-tts configure' "
-                "to set up your endpoint."
+                "Either endpoint_id must be provided or auto_setup must be True"
             )
 
         self.base_url = f"https://api.runpod.ai/v2/{self.endpoint_id}"
@@ -51,34 +60,71 @@ class UnifiedTTSModel:
             "Content-Type": "application/json",
         }
 
+    def _setup_endpoint(self) -> str:
+        """Setup template and endpoint automatically.
+
+        Returns:
+            Endpoint ID
+        """
+        from tts_pg.runpod_manager import RunpodManager
+
+        manager = RunpodManager(api_key=self.api_key)
+
+        # Get GPU type from environment or use default
+        gpu_ids = os.getenv('VIBEVOICE_GPU_TYPE', 'AMPERE_16')
+
+        endpoint_id = manager.ensure_vibevoice_endpoint(
+            docker_image=self.docker_image,
+            gpu_ids=gpu_ids,
+        )
+
+        return endpoint_id
+
     def synthesize(
         self,
         text: str,
         output_path: str | Path,
-        **kwargs,
+        voice_sample_path: str | Path | None = None,
+        add_speaker_labels: bool = True,
+        chunk_size: int = 500,
     ) -> Path:
-        """Synthesize speech.
+        """Synthesize speech using VibeVoice via Runpod.
 
         Args:
             text: Input text
             output_path: Path to save the audio file
-            **kwargs: Additional model-specific parameters
+            voice_sample_path: Path to voice sample (optional)
+            add_speaker_labels: Whether to add speaker labels automatically
+            chunk_size: Maximum characters per chunk for long text
 
         Returns:
             Path to the generated audio file
         """
         output_path = Path(output_path)
 
-        console.print(f"[cyan]Synthesizing with {self.model_name.title()}...[/cyan]")
+        console.print("[cyan]Synthesizing with VibeVoice (Runpod)...[/cyan]")
+
+        # Prepare voice sample if provided
+        voice_sample_b64 = None
+        if voice_sample_path:
+            voice_path = Path(voice_sample_path)
+            if not voice_path.exists():
+                console.print(f"[yellow]Warning: Voice sample not found: {voice_path}[/yellow]")
+            else:
+                console.print(f"[cyan]Using voice sample: {voice_path}[/cyan]")
+                voice_sample_b64 = base64.b64encode(voice_path.read_bytes()).decode()
 
         # Prepare payload
         payload = {
             "input": {
-                "model": self.model_name,
                 "text": text,
-                **kwargs,
+                "add_speaker_labels": add_speaker_labels,
+                "chunk_size": chunk_size,
             }
         }
+
+        if voice_sample_b64:
+            payload["input"]["voice_sample"] = voice_sample_b64
 
         # Submit job
         response = requests.post(
@@ -133,45 +179,3 @@ class UnifiedTTSModel:
             attempt += 1
 
         raise RuntimeError("Job timed out after 10 minutes")
-
-
-class ChatterboxModel(UnifiedTTSModel):
-    """ChatterboxTurboTTS model client."""
-
-    def __init__(self, api_key: str | None = None, endpoint_id: str | None = None):
-        """Initialize Chatterbox client."""
-        super().__init__("chatterbox", api_key=api_key, endpoint_id=endpoint_id)
-
-
-class VibeVoiceModel(UnifiedTTSModel):
-    """VibeVoice model client."""
-
-    def __init__(self, api_key: str | None = None, endpoint_id: str | None = None):
-        """Initialize VibeVoice client."""
-        super().__init__("vibevoice", api_key=api_key, endpoint_id=endpoint_id)
-
-    def synthesize(
-        self,
-        text: str,
-        output_path: str | Path,
-        voice_sample_path: str | Path | None = None,
-        add_speaker_labels: bool = True,
-        chunk_size: int = 500,
-    ) -> Path:
-        """Synthesize speech with VibeVoice-specific options."""
-        kwargs = {
-            "add_speaker_labels": add_speaker_labels,
-            "chunk_size": chunk_size,
-        }
-
-        # Encode voice sample if provided
-        if voice_sample_path:
-            voice_path = Path(voice_sample_path)
-            if not voice_path.exists():
-                console.print(f"[yellow]Warning: Voice sample not found: {voice_path}[/yellow]")
-            else:
-                console.print(f"[cyan]Using voice sample: {voice_path}[/cyan]")
-                voice_sample_b64 = base64.b64encode(voice_path.read_bytes()).decode()
-                kwargs["voice_sample"] = voice_sample_b64
-
-        return super().synthesize(text, output_path, **kwargs)

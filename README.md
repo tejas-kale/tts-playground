@@ -1,11 +1,11 @@
-# Article TTS
+# TTS Playground
 
 A unified CLI tool for high-quality text-to-speech synthesis supporting ChatterboxTurboTTS and VibeVoice via a single Runpod serverless endpoint.
 
 ## Features
 
 - **Unified Endpoint**: Both models run on a single Runpod endpoint
-- **One-Time Setup**: Configure once with `article-tts configure`
+- **One-Time Setup**: Configure once with `tts-pg configure`
 - **Zero Local Dependencies**: No GPU or heavy ML libraries required locally
 - **Two TTS Models**: ChatterboxTurboTTS (fast) and VibeVoice (voice cloning)
 - **Voice Cloning**: Support for custom voice samples with VibeVoice
@@ -20,7 +20,7 @@ A unified CLI tool for high-quality text-to-speech synthesis supporting Chatterb
 Install using `uv`:
 
 ```bash
-uv tool install article-tts
+uv tool install tts-pg
 ```
 
 Or install from source:
@@ -38,14 +38,14 @@ uv tool install .
 Run the configuration command to set up your Runpod endpoint:
 
 ```bash
-article-tts configure
+tts-pg configure
 ```
 
 You'll be prompted for:
 - **Runpod API Key** (required) - Get from [runpod.io](https://runpod.io) Settings → API Keys
 - **Hugging Face Token** (optional) - Required only for ChatterboxTurboTTS
 
-This creates a unified endpoint that supports both models. Configuration is saved locally at `~/.article-tts/config.json`.
+This creates a unified endpoint that supports both models. Configuration is saved locally at `~/.tts-pg/config.json`.
 
 ### Step 2: Generate Speech
 
@@ -53,16 +53,16 @@ Once configured, you can start generating speech:
 
 ```bash
 # Use ChatterboxTurboTTS (fast)
-article-tts speak "Hello, world!" -m chatterbox
+tts-pg speak "Hello, world!" -m chatterbox
 
 # Use VibeVoice (voice cloning)
-article-tts speak "Hello, world!" -m vibevoice
+tts-pg speak "Hello, world!" -m vibevoice
 
 # From a file
-article-tts speak -f article.txt -m chatterbox
+tts-pg speak -f article.txt -m chatterbox
 
 # With custom voice
-article-tts speak -f article.txt -m vibevoice --voice-sample voice.wav
+tts-pg speak -f article.txt -m vibevoice --voice-sample voice.wav
 ```
 
 ## Usage
@@ -74,7 +74,7 @@ article-tts speak -f article.txt -m vibevoice --voice-sample voice.wav
 Set up the Runpod endpoint (run this once):
 
 ```bash
-article-tts configure [OPTIONS]
+tts-pg configure [OPTIONS]
 ```
 
 **Options:**
@@ -88,18 +88,18 @@ article-tts configure [OPTIONS]
 **Example:**
 ```bash
 # Interactive (prompts for API key)
-article-tts configure
+tts-pg configure
 
 # With environment variables
 export RUNPOD_API_KEY="your-key"
 export HF_TOKEN="your-hf-token"
-article-tts configure
+tts-pg configure
 
 # With custom GPU
-article-tts configure --gpu-type AMPERE_24
+tts-pg configure --gpu-type AMPERE_24
 
 # Monitor deployment status (blocking)
-article-tts configure --show-status
+tts-pg configure --show-status
 ```
 
 #### `speak`
@@ -107,13 +107,13 @@ article-tts configure --show-status
 Generate speech from text:
 
 ```bash
-article-tts speak [TEXT] [OPTIONS]
+tts-pg speak [TEXT] [OPTIONS]
 ```
 
 **Options:**
 - `--file, -f` - Read text from file
 - `--model, -m` - Model: `chatterbox` or `vibevoice` (default: chatterbox)
-- `--output, -o` - Output path (default: `/tmp/article_tts_<timestamp>.wav`)
+- `--output, -o` - Output path (default: `/tmp/tts_pg_<timestamp>.wav`)
 - `--format` - Output format: `wav` or `mp3` (default: wav)
 - `--speed, -s` - Playback speed multiplier (default: 0.85)
 - `--bitrate, -b` - MP3 bitrate: 128k, 192k, 320k (default: 192k)
@@ -123,16 +123,16 @@ article-tts speak [TEXT] [OPTIONS]
 **Examples:**
 ```bash
 # ChatterboxTurboTTS from text
-article-tts speak "Hello, world!" -m chatterbox
+tts-pg speak "Hello, world!" -m chatterbox
 
 # VibeVoice from file with custom voice
-article-tts speak -f article.txt -m vibevoice --voice-sample my_voice.wav
+tts-pg speak -f article.txt -m vibevoice --voice-sample my_voice.wav
 
 # Generate MP3 at normal speed
-article-tts speak -f book.txt --format mp3 --speed 1.0
+tts-pg speak -f book.txt --format mp3 --speed 1.0
 
 # Save without auto-play
-article-tts speak -f article.txt -o ~/audio/output.wav --no-play
+tts-pg speak -f article.txt -o ~/audio/output.wav --no-play
 ```
 
 #### `preprocess`
@@ -140,11 +140,11 @@ article-tts speak -f article.txt -o ~/audio/output.wav --no-play
 Preview how text will be processed:
 
 ```bash
-article-tts preprocess [TEXT] [OPTIONS]
+tts-pg preprocess [TEXT] [OPTIONS]
 
 # Examples
-article-tts preprocess "Hello, world!"
-article-tts preprocess -f article.txt
+tts-pg preprocess "Hello, world!"
+tts-pg preprocess -f article.txt
 ```
 
 #### `info`
@@ -152,7 +152,7 @@ article-tts preprocess -f article.txt
 Display model information and configuration status:
 
 ```bash
-article-tts info
+tts-pg info
 ```
 
 ## Model Comparison
@@ -191,7 +191,7 @@ article-tts info
 
 ### Configuration File
 
-Configuration is stored at `~/.article-tts/config.json`:
+Configuration is stored at `~/.tts-pg/config.json`:
 
 ```json
 {
@@ -255,7 +255,7 @@ Both models run in a single Docker container on Runpod:
            │ HTTPS API
            │
     ┌──────┴───────┐
-    │  article-tts │
+    │  tts-pg │
     │      CLI      │
     └──────────────┘
 ```
@@ -264,7 +264,7 @@ Both models run in a single Docker container on Runpod:
 
 ```
 tts-playground/
-├── src/article_tts/
+├── src/tts_pg/
 │   ├── __init__.py
 │   ├── cli.py               # CLI commands
 │   ├── config.py            # Configuration management
@@ -284,12 +284,12 @@ tts-playground/
 
 ### How It Works
 
-1. **First Run**: `article-tts configure`
+1. **First Run**: `tts-pg configure`
    - Creates Runpod template via GraphQL API
    - Uses base PyTorch image with dynamic installation
    - Start command installs ChatterboxTTS, VibeVoice, and dependencies
    - Downloads unified handler from GitHub
-   - Deploys endpoint and saves endpoint ID to `~/.article-tts/config.json`
+   - Deploys endpoint and saves endpoint ID to `~/.tts-pg/config.json`
 
 2. **Container Startup** (automatic on first request):
    - Installs system dependencies (git, ffmpeg, libsndfile1)
@@ -297,7 +297,7 @@ tts-playground/
    - Downloads and runs unified handler
    - Loads both models on cold start (2-3 minutes first time)
 
-3. **Synthesis**: `article-tts speak`
+3. **Synthesis**: `tts-pg speak`
    - Reads endpoint ID from config
    - Sends request with `model` parameter
    - Handler routes to appropriate model
@@ -322,7 +322,7 @@ uv pip install -e ".[dev]"
 
 ### Building Custom Docker Images (Optional)
 
-By default, `article-tts configure` uses the base PyTorch image and installs dependencies dynamically via start commands. This approach requires no pre-built images and is the recommended method.
+By default, `tts-pg configure` uses the base PyTorch image and installs dependencies dynamically via start commands. This approach requires no pre-built images and is the recommended method.
 
 However, if you want to build a custom image for faster cold starts:
 
@@ -330,13 +330,13 @@ However, if you want to build a custom image for faster cold starts:
 cd runpod_deployments/unified
 
 # Build
-docker build -t your-username/article-tts-unified:latest .
+docker build -t your-username/tts-pg-unified:latest .
 
 # Push
-docker push your-username/article-tts-unified:latest
+docker push your-username/tts-pg-unified:latest
 
 # Use in configuration
-article-tts configure --docker-image your-username/article-tts-unified:latest
+tts-pg configure --docker-image your-username/tts-pg-unified:latest
 ```
 
 **Note**: With a custom image, the start command will be simpler (`python /app/handler.py`) since dependencies are pre-installed.
@@ -358,13 +358,13 @@ ruff check src/
 
 ### Configuration Issues
 
-**"Article TTS is not configured"**
-- Run `article-tts configure` first
-- Check that `~/.article-tts/config.json` exists
+**"TTS Playground is not configured"**
+- Run `tts-pg configure` first
+- Check that `~/.tts-pg/config.json` exists
 
 **"Configuration is incomplete"**
-- Delete `~/.article-tts/config.json`
-- Run `article-tts configure` again
+- Delete `~/.tts-pg/config.json`
+- Run `tts-pg configure` again
 
 **"Template creation failed"**
 - Verify your Runpod API key has permissions
@@ -393,22 +393,22 @@ ruff check src/
 
 **"Endpoint not found"**
 - Check endpoint exists in Runpod console
-- Run `article-tts configure` to create new endpoint
-- Verify endpoint ID in `~/.article-tts/config.json`
+- Run `tts-pg configure` to create new endpoint
+- Verify endpoint ID in `~/.tts-pg/config.json`
 
 **Cold start delays (2-3 minutes)**
 - Normal for first request or after idle timeout
 - Subsequent requests are fast (model cached)
 - Increase idle timeout or min workers to keep warm
-- Use `article-tts configure --show-status` to monitor deployment progress
+- Use `tts-pg configure --show-status` to monitor deployment progress
 
 ## Output Location
 
-Default: `/tmp/article_tts_<timestamp>.wav`
+Default: `/tmp/tts_pg_<timestamp>.wav`
 
 Custom location:
 ```bash
-article-tts speak -f article.txt -o ~/audio/output.wav
+tts-pg speak -f article.txt -o ~/audio/output.wav
 ```
 
 ## Cost Estimation

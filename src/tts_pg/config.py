@@ -1,4 +1,4 @@
-"""Configuration management for Article TTS."""
+"""Configuration management for TTS Playground."""
 
 from __future__ import annotations
 
@@ -13,16 +13,16 @@ console = Console()
 
 
 class Config:
-    """Configuration manager for Article TTS."""
+    """Configuration manager for TTS Playground."""
 
     def __init__(self, config_dir: str | Path | None = None):
         """Initialize configuration manager.
 
         Args:
-            config_dir: Configuration directory (default: ~/.article-tts)
+            config_dir: Configuration directory (default: ~/.tts-pg)
         """
         if config_dir is None:
-            self.config_dir = Path.home() / '.article-tts'
+            self.config_dir = Path.home() / '.tts-pg'
         else:
             self.config_dir = Path(config_dir)
 
@@ -135,7 +135,7 @@ class Config:
     def display(self) -> None:
         """Display current configuration."""
         if not self._config:
-            console.print("[yellow]No configuration found. Run 'article-tts configure' to set up.[/yellow]")
+            console.print("[yellow]No configuration found. Run 'tts-pg configure' to set up.[/yellow]")
             return
 
         console.print("\n[bold cyan]Current Configuration:[/bold cyan]")

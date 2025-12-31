@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "article-tts"
+name = "tts-pg"
 version = "0.1.0"
 description = "A unified CLI tool for text-to-speech synthesis using ChatterboxTurboTTS and VibeVoice"
 readme = "README.md"
@@ -38,14 +38,14 @@ dev = [
 ]
 
 [project.scripts]
-article-tts = "article_tts.cli:cli"
+tts-pg = "tts_pg.cli:cli"
 
 [project.urls]
 Homepage = "https://github.com/tejas-kale/tts-playground"
 Repository = "https://github.com/tejas-kale/tts-playground"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/article_tts"]
+packages = ["src/tts_pg"]
 
 [tool.hatch.build.targets.sdist]
 include = [
