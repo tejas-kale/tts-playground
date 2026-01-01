@@ -1,14 +1,13 @@
 # TTS Playground
 
-A unified CLI tool for high-quality text-to-speech synthesis supporting ChatterboxTurboTTS and VibeVoice via a single Runpod serverless endpoint.
+A simple CLI tool for high-quality text-to-speech synthesis using ChatterboxTurboTTS via Runpod serverless infrastructure.
 
 ## Features
 
-- **Unified Endpoint**: Both models run on a single Runpod endpoint
+- **Serverless Deployment**: Runs on Runpod's serverless GPU infrastructure
 - **One-Time Setup**: Configure once with `tts-pg configure`
 - **Zero Local Dependencies**: No GPU or heavy ML libraries required locally
-- **Two TTS Models**: ChatterboxTurboTTS (fast) and VibeVoice (voice cloning)
-- **Voice Cloning**: Support for custom voice samples with VibeVoice
+- **Fast Generation**: 10x real-time speed with ChatterboxTurboTTS
 - **Intelligent Text Chunking**: Automatically splits long text at sentence boundaries
 - **Speed Control**: Adjust playback speed (0.5x - 2.0x)
 - **Format Options**: Output as WAV or MP3 with configurable bitrate
@@ -43,26 +42,23 @@ tts-pg configure
 
 You'll be prompted for:
 - **Runpod API Key** (required) - Get from [runpod.io](https://runpod.io) Settings → API Keys
-- **Hugging Face Token** (optional) - Required only for ChatterboxTurboTTS
+- **Hugging Face Token** (required) - Required for ChatterboxTurboTTS model access
 
-This creates a unified endpoint that supports both models. Configuration is saved locally at `~/.tts-pg/config.json`.
+This creates a serverless endpoint and saves configuration locally at `~/.tts-pg/config.json`.
 
 ### Step 2: Generate Speech
 
 Once configured, you can start generating speech:
 
 ```bash
-# Use ChatterboxTurboTTS (fast)
-tts-pg speak "Hello, world!" -m chatterbox
-
-# Use VibeVoice (voice cloning)
-tts-pg speak "Hello, world!" -m vibevoice
+# Generate from text
+tts-pg speak "Hello, world!"
 
 # From a file
-tts-pg speak -f article.txt -m chatterbox
+tts-pg speak -f article.txt
 
-# With custom voice
-tts-pg speak -f article.txt -m vibevoice --voice-sample voice.wav
+# Generate MP3 at custom speed
+tts-pg speak -f book.txt --format mp3 --speed 1.0
 ```
 
 ## Usage
@@ -82,7 +78,7 @@ tts-pg configure [OPTIONS]
 - `--docker-image` - Base Docker image (default: `runpod/pytorch:2.1.0-py3.10-cuda11.8.0-devel-ubuntu22.04`)
 - `--gpu-type` - GPU type: AMPERE_16, AMPERE_24, AMPERE_48, ADA_24 (default: AMPERE_16)
 - `--workers-max` - Maximum workers (default: 1)
-- `--hf-token` - Hugging Face token for Chatterbox (or set `HF_TOKEN`)
+- `--hf-token` - Hugging Face token (or set `HF_TOKEN`)
 - `--show-status` - Monitor endpoint deployment and startup status (blocking)
 
 **Example:**
@@ -112,21 +108,19 @@ tts-pg speak [TEXT] [OPTIONS]
 
 **Options:**
 - `--file, -f` - Read text from file
-- `--model, -m` - Model: `chatterbox` or `vibevoice` (default: chatterbox)
 - `--output, -o` - Output path (default: `/tmp/tts_pg_<timestamp>.wav`)
 - `--format` - Output format: `wav` or `mp3` (default: wav)
 - `--speed, -s` - Playback speed multiplier (default: 0.85)
 - `--bitrate, -b` - MP3 bitrate: 128k, 192k, 320k (default: 192k)
 - `--play/--no-play` - Auto-play audio (default: enabled)
-- `--voice-sample` - Voice sample for VibeVoice cloning
 
 **Examples:**
 ```bash
-# ChatterboxTurboTTS from text
-tts-pg speak "Hello, world!" -m chatterbox
+# Generate from text
+tts-pg speak "Hello, world!"
 
-# VibeVoice from file with custom voice
-tts-pg speak -f article.txt -m vibevoice --voice-sample my_voice.wav
+# From file
+tts-pg speak -f article.txt
 
 # Generate MP3 at normal speed
 tts-pg speak -f book.txt --format mp3 --speed 1.0
@@ -155,37 +149,18 @@ Display model information and configuration status:
 tts-pg info
 ```
 
-## Model Comparison
-
-### ChatterboxTurboTTS
-
-**Best for:** Speed and efficiency
+## ChatterboxTurboTTS
 
 **Features:**
 - 10x faster than standard TTS models
 - Optimized 100-token chunking
-- Automatic text splitting
-- Requires Hugging Face token
+- Automatic sentence-aware text splitting
+- Seamless audio concatenation for long texts
 
-**Use when:**
-- You need fast audio generation
-- Quality is good enough
-- You have many texts to process
-
-### VibeVoice
-
-**Best for:** Voice cloning and quality
-
-**Features:**
-- Custom voice sample support
-- High-quality voice generation
-- 500-character smart chunking
-- Automatic speaker labeling
-
-**Use when:**
-- You want to clone a specific voice
-- Audio quality is paramount
-- You have a voice sample (3-10 seconds)
+**Performance:**
+- Typical synthesis: ~0.1x real-time (10x faster)
+- Cold start: 1-2 minutes (first request)
+- Warm requests: < 5 seconds
 
 ## Configuration
 
@@ -210,8 +185,6 @@ Alternatively, set these environment variables:
 ```bash
 # Required for configuration
 export RUNPOD_API_KEY="your-api-key"
-
-# Optional for ChatterboxTurboTTS
 export HF_TOKEN="your-hugging-face-token"
 ```
 
@@ -226,37 +199,33 @@ Choose based on your performance/cost needs:
 
 Serverless workers scale to zero when idle - you only pay for active inference time.
 
-### Voice Samples (VibeVoice)
-
-For best voice cloning results:
-- Duration: 3-10 seconds of clear speech
-- Format: WAV (recommended) or MP3
-- Quality: 16kHz+ sample rate, no background noise
-- Content: Natural speech, not reading
-
 ## Architecture
 
-### Unified Endpoint
+### Serverless Deployment
 
-Both models run in a single Docker container on Runpod:
+ChatterboxTurboTTS runs on Runpod serverless infrastructure:
 
 ```
 ┌─────────────────────────────────────┐
-│   Unified Runpod Endpoint           │
+│   Runpod Serverless Endpoint        │
 │                                      │
-│  ┌────────────────┐ ┌─────────────┐│
-│  │ ChatterboxTTS  │ │ VibeVoice   ││
-│  │  (100 tokens)  │ │ (500 chars) ││
-│  └────────────────┘ └─────────────┘│
+│  ┌────────────────────────────────┐ │
+│  │     ChatterboxTurboTTS         │ │
+│  │    (100-token chunks)          │ │
+│  │                                 │ │
+│  │  • Automatic text splitting    │ │
+│  │  • Sentence-aware chunking     │ │
+│  │  • Audio concatenation         │ │
+│  └────────────────────────────────┘ │
 │                                      │
-│  Handler routes based on model param│
+│  Handler processes requests          │
 └─────────────────────────────────────┘
            ▲
            │ HTTPS API
            │
     ┌──────┴───────┐
-    │  tts-pg │
-    │      CLI      │
+    │   tts-pg     │
+    │     CLI      │
     └──────────────┘
 ```
 
@@ -272,12 +241,11 @@ tts-playground/
 │   ├── utils.py             # Shared utilities
 │   └── models/
 │       ├── __init__.py
-│       └── base.py          # Unified model clients
+│       └── chatterbox.py    # ChatterboxTurboTTS client
 ├── runpod_deployments/
 │   └── unified/
-│       ├── handler.py       # Unified serverless handler
-│       ├── Dockerfile       # Container with both models
-│       └── requirements.txt # Handler dependencies
+│       ├── handler.py       # Serverless handler
+│       └── README.md        # Deployment docs
 ├── pyproject.toml
 └── README.md
 ```
@@ -287,26 +255,22 @@ tts-playground/
 1. **First Run**: `tts-pg configure`
    - Creates Runpod template via GraphQL API
    - Uses base PyTorch image with dynamic installation
-   - Start command installs ChatterboxTTS, VibeVoice, and dependencies
-   - Downloads unified handler from GitHub
+   - Start command installs ChatterboxTTS and dependencies
+   - Downloads handler from GitHub
    - Deploys endpoint and saves endpoint ID to `~/.tts-pg/config.json`
 
 2. **Container Startup** (automatic on first request):
-   - Installs system dependencies (git, ffmpeg, libsndfile1)
-   - Installs Python packages (chatterbox-tts, VibeVoice, etc.)
-   - Downloads and runs unified handler
-   - Loads both models on cold start (2-3 minutes first time)
+   - Installs system dependencies (ffmpeg)
+   - Installs Python packages (chatterbox-tts, torchaudio, accelerate)
+   - Downloads and runs handler
+   - Loads ChatterboxTurboTTS model (1-2 minutes first time)
 
 3. **Synthesis**: `tts-pg speak`
    - Reads endpoint ID from config
-   - Sends request with `model` parameter
-   - Handler routes to appropriate model
-   - Returns generated audio
-
-4. **Model Selection**:
-   - Request includes `"model": "chatterbox"` or `"vibevoice"`
-   - Handler loads appropriate model (cached after first use)
-   - Model-specific optimizations applied server-side
+   - Sends request to Runpod endpoint
+   - Handler chunks text and generates audio
+   - Returns generated audio as base64
+   - CLI saves to file and optionally plays
 
 ## Development
 
@@ -319,27 +283,6 @@ cd tts-playground
 # Install with dev dependencies
 uv pip install -e ".[dev]"
 ```
-
-### Building Custom Docker Images (Optional)
-
-By default, `tts-pg configure` uses the base PyTorch image and installs dependencies dynamically via start commands. This approach requires no pre-built images and is the recommended method.
-
-However, if you want to build a custom image for faster cold starts:
-
-```bash
-cd runpod_deployments/unified
-
-# Build
-docker build -t your-username/tts-pg-unified:latest .
-
-# Push
-docker push your-username/tts-pg-unified:latest
-
-# Use in configuration
-tts-pg configure --docker-image your-username/tts-pg-unified:latest
-```
-
-**Note**: With a custom image, the start command will be simpler (`python /app/handler.py`) since dependencies are pre-installed.
 
 ### Run Tests
 
@@ -383,12 +326,6 @@ ruff check src/
 - Check Hugging Face token has access to Chatterbox model
 - Reconfigure with correct token
 
-**VibeVoice voice cloning issues**
-- Use clean voice samples (no background noise)
-- Try samples between 3-10 seconds
-- WAV format recommended over MP3
-- Higher sample rate (16kHz+) works better
-
 ### General Issues
 
 **"Endpoint not found"**
@@ -396,7 +333,7 @@ ruff check src/
 - Run `tts-pg configure` to create new endpoint
 - Verify endpoint ID in `~/.tts-pg/config.json`
 
-**Cold start delays (2-3 minutes)**
+**Cold start delays (1-2 minutes)**
 - Normal for first request or after idle timeout
 - Subsequent requests are fast (model cached)
 - Increase idle timeout or min workers to keep warm
@@ -434,7 +371,6 @@ MIT License - See LICENSE file for details
 ## Credits
 
 - **ChatterboxTurboTTS**: High-speed TTS model
-- **VibeVoice**: Voice cloning capable TTS
 - **Runpod**: Serverless GPU infrastructure
 
 ## Contributing
@@ -449,7 +385,6 @@ Contributions welcome! Please:
 
 - [GitHub Repository](https://github.com/tejas-kale/tts-playground)
 - [Issue Tracker](https://github.com/tejas-kale/tts-playground/issues)
-- [VibeVoice Repository](https://github.com/tejas-kale/VibeVoice)
 - [Runpod Platform](https://runpod.io)
 - [Runpod Documentation](https://docs.runpod.io)
 
