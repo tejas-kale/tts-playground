@@ -9,6 +9,7 @@ import base64
 import io
 import os
 import re
+import tempfile
 from typing import Any
 
 import runpod
@@ -22,6 +23,7 @@ from pydub import AudioSegment
 chatterbox_model = None
 vibevoice_model = None
 vibevoice_processor = None
+vibevoice_default_voice = None
 
 
 def load_chatterbox():
@@ -46,13 +48,14 @@ def load_chatterbox():
 
 def load_vibevoice():
     """Load the VibeVoice model."""
-    global vibevoice_model, vibevoice_processor
+    global vibevoice_model, vibevoice_processor, vibevoice_default_voice
 
     if vibevoice_model is None:
         from vibevoice.modular.modeling_vibevoice_inference import (
             VibeVoiceForConditionalGenerationInference,
         )
         from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
+        import urllib.request
 
         model_name = os.getenv("VIBEVOICE_MODEL", "microsoft/VibeVoice-1.5B")
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -64,7 +67,14 @@ def load_vibevoice():
         vibevoice_processor = VibeVoiceProcessor.from_pretrained(model_name)
         print("VibeVoice model loaded successfully!")
 
-    return vibevoice_model, vibevoice_processor
+        # Download default voice sample
+        print("Downloading default voice sample...")
+        voice_url = "https://raw.githubusercontent.com/vibevoice-community/VibeVoice/main/demo/voices/en-Alice_woman.wav"
+        vibevoice_default_voice = "/tmp/vibevoice_default_voice.wav"
+        urllib.request.urlretrieve(voice_url, vibevoice_default_voice)
+        print(f"Default voice sample saved to {vibevoice_default_voice}")
+
+    return vibevoice_model, vibevoice_processor, vibevoice_default_voice
 
 
 def count_tokens(text: str, tokenizer) -> int:
@@ -176,6 +186,7 @@ def preprocess_text_vibevoice(text: str, add_speaker: bool = True) -> str:
 def synthesize_vibevoice_chunk(
     text: str,
     voice_sample_b64: str | None = None,
+    default_voice_path: str | None = None,
     model=None,
     processor=None,
     max_length: int = 2000,
@@ -183,37 +194,54 @@ def synthesize_vibevoice_chunk(
     """Synthesize a chunk using VibeVoice."""
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Prepare inputs
+    # Prepare voice sample path
     if voice_sample_b64:
+        # Save custom voice sample to temp file
         voice_bytes = base64.b64decode(voice_sample_b64)
-        voice_buffer = io.BytesIO(voice_bytes)
-        voice_audio, voice_sr = sf.read(voice_buffer)
-
-        inputs = processor(
-            text=text,
-            audio=voice_audio,
-            sampling_rate=voice_sr,
-            return_tensors="pt"
-        )
+        temp_voice = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+        temp_voice.write(voice_bytes)
+        temp_voice.close()
+        voice_sample_path = temp_voice.name
     else:
-        inputs = processor(text=text, return_tensors="pt")
+        # Use default voice
+        voice_sample_path = default_voice_path
+
+    # Prepare inputs - VibeVoice 1.5B requires text and voice_samples as lists
+    inputs = processor(
+        text=[text],
+        voice_samples=[[voice_sample_path]],
+        padding=True,
+        return_tensors="pt",
+        return_attention_mask=True,
+    )
 
     # Move to device
-    inputs = {k: v.to(device) if torch.is_tensor(v) else v
-             for k, v in inputs.items()}
+    for k, v in inputs.items():
+        if torch.is_tensor(v):
+            inputs[k] = v.to(device)
 
     # Generate
     with torch.no_grad():
-        output = model.generate(**inputs, tokenizer=processor.tokenizer, max_length=max_length)
+        outputs = model.generate(
+            **inputs,
+            tokenizer=processor.tokenizer,
+            max_new_tokens=None,
+            cfg_scale=1.3,
+            generation_config={'do_sample': False},
+        )
 
-    # Convert to numpy
-    if torch.is_tensor(output):
-        audio_array = output.cpu().numpy()
+    # Clean up temp file if created
+    if voice_sample_b64 and os.path.exists(voice_sample_path):
+        os.unlink(voice_sample_path)
+
+    # Extract audio from outputs
+    if hasattr(outputs, 'speech_outputs') and outputs.speech_outputs:
+        audio_array = outputs.speech_outputs[0]
     else:
-        audio_array = output
+        raise ValueError("No audio output generated")
 
     # Get sample rate
-    sample_rate = getattr(model.config, 'sample_rate', 24000)
+    sample_rate = 24000  # VibeVoice uses 24kHz
 
     # Save to bytes
     buffer = io.BytesIO()
@@ -229,7 +257,7 @@ def synthesize_vibevoice(
     chunk_size: int = 500,
 ) -> bytes:
     """Synthesize speech using VibeVoice."""
-    model, processor = load_vibevoice()
+    model, processor, default_voice = load_vibevoice()
 
     # Preprocess text
     processed_text = preprocess_text_vibevoice(text, add_speaker=add_speaker_labels)
@@ -266,7 +294,7 @@ def synthesize_vibevoice(
         for i, chunk in enumerate(chunks, 1):
             print(f"  Chunk {i}/{len(chunks)}")
             audio_bytes = synthesize_vibevoice_chunk(
-                chunk, voice_sample_b64, model, processor
+                chunk, voice_sample_b64, default_voice, model, processor
             )
             audio_chunks.append(audio_bytes)
 
@@ -285,7 +313,7 @@ def synthesize_vibevoice(
     else:
         # Direct synthesis
         return synthesize_vibevoice_chunk(
-            processed_text, voice_sample_b64, model, processor
+            processed_text, voice_sample_b64, default_voice, model, processor
         )
 
 

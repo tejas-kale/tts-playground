@@ -9,6 +9,7 @@ import base64
 import io
 import os
 import re
+import tempfile
 from typing import Any
 
 import runpod
@@ -20,15 +21,16 @@ from pydub import AudioSegment
 # Global model (loaded once on cold start)
 model = None
 processor = None
+default_voice = None
 
 
 def load_model():
     """Load the VibeVoice model.
 
     Returns:
-        Tuple of (model, processor)
+        Tuple of (model, processor, default_voice)
     """
-    global model, processor
+    global model, processor, default_voice
 
     if model is None:
         try:
@@ -36,6 +38,7 @@ def load_model():
                 VibeVoiceForConditionalGenerationInference,
             )
             from vibevoice.processor.vibevoice_processor import VibeVoiceProcessor
+            import urllib.request
         except ImportError:
             raise ImportError(
                 "VibeVoice is not installed. This should not happen in the "
@@ -54,7 +57,14 @@ def load_model():
 
         print("Model loaded successfully!")
 
-    return model, processor
+        # Download default voice sample
+        print("Downloading default voice sample...")
+        voice_url = "https://raw.githubusercontent.com/vibevoice-community/VibeVoice/main/demo/voices/en-Alice_woman.wav"
+        default_voice = "/tmp/vibevoice_default_voice.wav"
+        urllib.request.urlretrieve(voice_url, default_voice)
+        print(f"Default voice sample saved to {default_voice}")
+
+    return model, processor, default_voice
 
 
 def preprocess_text(text: str, add_speaker: bool = True) -> str:
@@ -85,6 +95,7 @@ def preprocess_text(text: str, add_speaker: bool = True) -> str:
 def synthesize_chunk(
     text: str,
     voice_sample_b64: str | None = None,
+    default_voice_path: str | None = None,
     tts_model=None,
     tts_processor=None,
     max_length: int = 2000,
@@ -94,6 +105,7 @@ def synthesize_chunk(
     Args:
         text: Text to synthesize
         voice_sample_b64: Base64-encoded voice sample audio (optional)
+        default_voice_path: Path to default voice sample
         tts_model: VibeVoice model
         tts_processor: VibeVoice processor
         max_length: Maximum generation length
@@ -103,40 +115,54 @@ def synthesize_chunk(
     """
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Prepare inputs
+    # Prepare voice sample path
     if voice_sample_b64:
-        # Decode voice sample
+        # Save custom voice sample to temp file
         voice_bytes = base64.b64decode(voice_sample_b64)
-        voice_buffer = io.BytesIO(voice_bytes)
-        voice_audio, voice_sr = sf.read(voice_buffer)
-
-        # Process with voice sample
-        inputs = tts_processor(
-            text=text,
-            audio=voice_audio,
-            sampling_rate=voice_sr,
-            return_tensors="pt"
-        )
+        temp_voice = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)
+        temp_voice.write(voice_bytes)
+        temp_voice.close()
+        voice_sample_path = temp_voice.name
     else:
-        # Process without voice sample
-        inputs = tts_processor(text=text, return_tensors="pt")
+        # Use default voice
+        voice_sample_path = default_voice_path
 
-    # Move inputs to device
-    inputs = {k: v.to(device) if torch.is_tensor(v) else v
-             for k, v in inputs.items()}
+    # Prepare inputs - VibeVoice 1.5B requires text and voice_samples as lists
+    inputs = tts_processor(
+        text=[text],
+        voice_samples=[[voice_sample_path]],
+        padding=True,
+        return_tensors="pt",
+        return_attention_mask=True,
+    )
+
+    # Move to device
+    for k, v in inputs.items():
+        if torch.is_tensor(v):
+            inputs[k] = v.to(device)
 
     # Generate audio
     with torch.no_grad():
-        output = tts_model.generate(**inputs, tokenizer=tts_processor.tokenizer, max_length=max_length)
+        outputs = tts_model.generate(
+            **inputs,
+            tokenizer=tts_processor.tokenizer,
+            max_new_tokens=None,
+            cfg_scale=1.3,
+            generation_config={'do_sample': False},
+        )
 
-    # Convert to numpy
-    if torch.is_tensor(output):
-        audio_array = output.cpu().numpy()
+    # Clean up temp file if created
+    if voice_sample_b64 and os.path.exists(voice_sample_path):
+        os.unlink(voice_sample_path)
+
+    # Extract audio from outputs
+    if hasattr(outputs, 'speech_outputs') and outputs.speech_outputs:
+        audio_array = outputs.speech_outputs[0]
     else:
-        audio_array = output
+        raise ValueError("No audio output generated")
 
     # Get sample rate
-    sample_rate = getattr(tts_model.config, 'sample_rate', 24000)
+    sample_rate = 24000  # VibeVoice uses 24kHz
 
     # Save to bytes
     buffer = io.BytesIO()
@@ -165,7 +191,7 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
         chunk_size = job_input.get("chunk_size", 500)  # Characters
 
         # Load model
-        tts_model, tts_processor = load_model()
+        tts_model, tts_processor, default_voice = load_model()
 
         # Preprocess text
         processed_text = preprocess_text(text, add_speaker=add_speaker_labels)
@@ -206,6 +232,7 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
                 audio_bytes = synthesize_chunk(
                     chunk,
                     voice_sample_b64,
+                    default_voice,
                     tts_model,
                     tts_processor,
                 )
@@ -229,6 +256,7 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
             final_audio = synthesize_chunk(
                 processed_text,
                 voice_sample_b64,
+                default_voice,
                 tts_model,
                 tts_processor,
             )
