@@ -1,5 +1,5 @@
 """TTS model implementations."""
 
-from .base import ChatterboxModel, VibeVoiceModel
+from .chatterbox import ChatterboxModel
 
-__all__ = ["ChatterboxModel", "VibeVoiceModel"]
+__all__ = ["ChatterboxModel"]

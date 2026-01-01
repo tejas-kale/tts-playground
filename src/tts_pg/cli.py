@@ -12,7 +12,7 @@ from rich.console import Console
 
 from tts_pg import __version__
 from tts_pg.config import Config
-from tts_pg.models import ChatterboxModel, VibeVoiceModel
+from tts_pg.models import ChatterboxModel
 from tts_pg.runpod_manager import RunpodManager
 from tts_pg.utils import (
     adjust_speed,
@@ -115,10 +115,8 @@ def configure(
         docker_args = (
             "/bin/bash -c '"
             "apt-get update && "
-            "apt-get install -y git ffmpeg libsndfile1 && "
-            "pip install runpod chatterbox-tts soundfile pydub torchaudio accelerate && "
-            "git clone https://github.com/vibevoice-community/VibeVoice.git /tmp/VibeVoice && "
-            "cd /tmp/VibeVoice && pip install -e . && cd / && "
+            "apt-get install -y ffmpeg && "
+            "pip install runpod chatterbox-tts torchaudio accelerate && "
             "wget -O /handler.py https://raw.githubusercontent.com/tejas-kale/tts-playground/main/runpod_deployments/unified/handler.py && "
             "python /handler.py"
             "'"
@@ -182,12 +180,6 @@ def configure(
     help='Read text from file instead of argument'
 )
 @click.option(
-    '--model', '-m',
-    type=click.Choice(['chatterbox', 'vibevoice'], case_sensitive=False),
-    default='chatterbox',
-    help='TTS model to use (default: chatterbox)'
-)
-@click.option(
     '--output', '-o',
     type=click.Path(),
     help='Output file path (default: /tmp/tts_pg_<timestamp>.wav)'
@@ -215,41 +207,30 @@ def configure(
     default=True,
     help='Auto-play generated audio (default: enabled)'
 )
-@click.option(
-    '--voice-sample',
-    type=click.Path(exists=True),
-    help='Voice sample for VibeVoice (optional)'
-)
 def speak(
     text: str | None,
     file: str | None,
-    model: str,
     output: str | None,
     format: str,
     speed: float,
     bitrate: str,
     play: bool,
-    voice_sample: str | None,
 ):
-    """Generate speech from text using the specified model.
+    """Generate speech from text using ChatterboxTurboTTS.
 
     Examples:
 
         \b
-        # Use Chatterbox with text argument
-        $ tts-pg speak "Hello, world!" -m chatterbox
+        # Generate from text argument
+        $ tts-pg speak "Hello, world!"
 
         \b
-        # Use VibeVoice with file input
-        $ tts-pg speak -f article.txt -m vibevoice
+        # Generate from file
+        $ tts-pg speak -f article.txt
 
         \b
         # Generate MP3 at custom speed
         $ tts-pg speak -f article.txt --format mp3 --speed 1.0
-
-        \b
-        # Use custom voice with VibeVoice
-        $ tts-pg speak -f article.txt -m vibevoice --voice-sample voice.wav
     """
     # Validate input
     if not text and not file:
@@ -311,30 +292,15 @@ def speak(
             )
             raise click.Abort()
 
-        # Synthesize speech based on model
-        if model.lower() == 'chatterbox':
-            console.print("[bold cyan]Using ChatterboxTurboTTS[/bold cyan]")
+        # Synthesize speech with ChatterboxTurboTTS
+        console.print("[bold cyan]Using ChatterboxTurboTTS[/bold cyan]")
 
-            tts_model = ChatterboxModel(
-                api_key=api_key,
-                endpoint_id=endpoint_id,
-            )
+        tts_model = ChatterboxModel(
+            api_key=api_key,
+            endpoint_id=endpoint_id,
+        )
 
-            tts_model.synthesize(text, wav_output)
-
-        elif model.lower() == 'vibevoice':
-            console.print("[bold cyan]Using VibeVoice[/bold cyan]")
-
-            tts_model = VibeVoiceModel(
-                api_key=api_key,
-                endpoint_id=endpoint_id,
-            )
-
-            tts_model.synthesize(
-                text,
-                wav_output,
-                voice_sample_path=voice_sample,
-            )
+        tts_model.synthesize(text, wav_output)
 
         # Apply speed adjustment if needed
         final_wav = wav_output
@@ -407,27 +373,19 @@ def preprocess(text: str | None, file: str | None):
 
 @cli.command()
 def info():
-    """Display information about available models and configuration."""
+    """Display information about ChatterboxTurboTTS and configuration."""
     console.print("[bold cyan]TTS Playground - Model Information[/bold cyan]\n")
 
-    console.print("[bold]Available Models:[/bold]")
-    console.print("  • chatterbox - ChatterboxTurboTTS (fast, 10x speed)")
-    console.print("  • vibevoice  - VibeVoice (voice cloning capable)\n")
-
     console.print("[bold]ChatterboxTurboTTS:[/bold]")
-    console.print("  • Optimized for speed with 100 token chunks")
-    console.print("  • Automatic text splitting for long content")
+    console.print("  • Optimized for speed with 10x real-time performance")
+    console.print("  • Automatic text chunking at 100 token boundaries")
+    console.print("  • Sentence-aware splitting for natural audio")
     console.print("  • Requires Hugging Face token\n")
 
-    console.print("[bold]VibeVoice:[/bold]")
-    console.print("  • Supports custom voice samples for voice cloning")
-    console.print("  • Automatic chunking for long text (500 char chunks)")
-    console.print("  • High-quality voice generation\n")
-
-    console.print("[bold]Unified Endpoint:[/bold]")
-    console.print("  • Both models run on a single Runpod endpoint")
+    console.print("[bold]Deployment:[/bold]")
+    console.print("  • Runs on Runpod serverless GPU infrastructure")
     console.print("  • Set up once with 'tts-pg configure'")
-    console.print("  • Switch between models with --model flag\n")
+    console.print("  • Automatic scaling based on usage\n")
 
     # Check current configuration
     config = Config()
