@@ -1,5 +1,7 @@
 # TTS Playground
 
+> **Note**: This code was written with [Claude Code](https://claude.com/claude-code) and reviewed by me.
+
 A simple CLI tool for high-quality text-to-speech synthesis using ChatterboxTurboTTS via Runpod serverless infrastructure.
 
 ## Features
