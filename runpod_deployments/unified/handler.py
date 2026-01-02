@@ -108,9 +108,10 @@ def synthesize_chatterbox(text: str) -> bytes:
 
     # Check token count
     total_tokens = count_tokens(text, tokenizer)
+    print(f"[TTS] Received {total_tokens} tokens: '{text[:60]}...'")
 
     if total_tokens <= 100:
-        print(f"Generating audio directly ({total_tokens} tokens)...")
+        print(f"[TTS] Synthesizing directly...")
         wav = model.generate(text)
 
         # Validate generated audio
@@ -119,26 +120,27 @@ def synthesize_chatterbox(text: str) -> bytes:
                 f"Generated audio contains invalid values (NaN/Inf). "
                 f"Input text: '{text[:100]}...'"
             )
+        print(f"[TTS] Audio generated successfully")
     else:
-        print(f"Text has {total_tokens} tokens, splitting into chunks...")
+        print(f"[TTS] Need to sub-divide into smaller parts ({total_tokens} > 100 tokens)")
         chunks = split_text_into_chunks(text, tokenizer, max_tokens=100)
-        print(f"Split into {len(chunks)} chunks")
+        print(f"[TTS] Processing {len(chunks)} sub-parts...")
 
         audio_chunks = []
         for i, chunk in enumerate(chunks, 1):
             # Skip empty chunks
             chunk = chunk.strip()
             if not chunk:
-                print(f"  Chunk {i}/{len(chunks)}: skipping empty chunk")
+                print(f"[TTS]   Sub-part {i}/{len(chunks)}: empty, skipping")
                 continue
 
             chunk_tokens = count_tokens(chunk, tokenizer)
-            print(f"  Chunk {i}/{len(chunks)}: {chunk_tokens} tokens - '{chunk[:50]}...'")
+            print(f"[TTS]   Sub-part {i}/{len(chunks)}: {chunk_tokens} tokens")
             wav = model.generate(chunk)
 
             # Validate generated audio
             if not torch.isfinite(wav).all():
-                print(f"  Warning: Chunk {i} generated invalid audio (NaN/Inf), skipping")
+                print(f"[TTS]   Sub-part {i}/{len(chunks)}: invalid audio (NaN/Inf), skipping")
                 continue
 
             audio_chunks.append(wav)
@@ -146,8 +148,9 @@ def synthesize_chatterbox(text: str) -> bytes:
         if not audio_chunks:
             raise RuntimeError("No valid audio chunks generated")
 
-        print("Concatenating audio chunks...")
+        print(f"[TTS] Concatenating {len(audio_chunks)} sub-parts...")
         wav = torch.cat(audio_chunks, dim=-1)
+        print(f"[TTS] Audio generated successfully")
 
     # Save to bytes
     buffer = io.BytesIO()
@@ -162,19 +165,15 @@ def handler(job: dict[str, Any]) -> dict[str, Any]:
         job_input = job["input"]
         text = job_input["text"]
 
-        print("Processing ChatterboxTurboTTS request...")
-
         audio_bytes = synthesize_chatterbox(text)
 
         # Encode as base64
         audio_b64 = base64.b64encode(audio_bytes).decode()
 
-        print("Speech synthesized successfully")
-
         return {"audio": audio_b64}
 
     except Exception as e:
-        print(f"Error during inference: {e}")
+        print(f"[ERROR] {e}")
         import traceback
         traceback.print_exc()
         return {"error": str(e)}
