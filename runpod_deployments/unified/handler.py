@@ -91,6 +91,11 @@ def synthesize_chatterbox(text: str) -> bytes:
     """Synthesize speech using ChatterboxTurboTTS."""
     model = load_chatterbox()
 
+    # Validate and clean input text
+    text = text.strip()
+    if not text:
+        raise ValueError("Input text is empty or whitespace-only")
+
     # Get tokenizer
     if hasattr(model, "text_encoder"):
         tokenizer = model.text_encoder.tokenizer
@@ -107,6 +112,13 @@ def synthesize_chatterbox(text: str) -> bytes:
     if total_tokens <= 100:
         print(f"Generating audio directly ({total_tokens} tokens)...")
         wav = model.generate(text)
+
+        # Validate generated audio
+        if not torch.isfinite(wav).all():
+            raise RuntimeError(
+                f"Generated audio contains invalid values (NaN/Inf). "
+                f"Input text: '{text[:100]}...'"
+            )
     else:
         print(f"Text has {total_tokens} tokens, splitting into chunks...")
         chunks = split_text_into_chunks(text, tokenizer, max_tokens=100)
@@ -114,10 +126,25 @@ def synthesize_chatterbox(text: str) -> bytes:
 
         audio_chunks = []
         for i, chunk in enumerate(chunks, 1):
+            # Skip empty chunks
+            chunk = chunk.strip()
+            if not chunk:
+                print(f"  Chunk {i}/{len(chunks)}: skipping empty chunk")
+                continue
+
             chunk_tokens = count_tokens(chunk, tokenizer)
-            print(f"  Chunk {i}/{len(chunks)}: {chunk_tokens} tokens")
+            print(f"  Chunk {i}/{len(chunks)}: {chunk_tokens} tokens - '{chunk[:50]}...'")
             wav = model.generate(chunk)
+
+            # Validate generated audio
+            if not torch.isfinite(wav).all():
+                print(f"  Warning: Chunk {i} generated invalid audio (NaN/Inf), skipping")
+                continue
+
             audio_chunks.append(wav)
+
+        if not audio_chunks:
+            raise RuntimeError("No valid audio chunks generated")
 
         print("Concatenating audio chunks...")
         wav = torch.cat(audio_chunks, dim=-1)

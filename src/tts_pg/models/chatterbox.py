@@ -10,8 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import requests
-import torch
-import torchaudio as ta
 from rich.console import Console
 
 console = Console()
@@ -140,11 +138,22 @@ class ChatterboxModel:
         response.raise_for_status()
         job_id = response.json()["id"]
 
-        # Poll for completion
-        max_attempts = 60  # 5 minutes max
-        attempt = 0
+        # Poll for completion until job reaches terminal state
+        # Terminal states: COMPLETED, FAILED, CANCELLED, TIMED_OUT
+        # Active states: IN_QUEUE, IN_PROGRESS
+        max_wait_time = 1800  # 30 minutes safety timeout
+        start_time = time.time()
+        last_status_print = start_time
+        status_print_interval = 60  # Print status every 60 seconds
 
-        while attempt < max_attempts:
+        while True:
+            # Check safety timeout
+            elapsed = time.time() - start_time
+            if elapsed > max_wait_time:
+                raise RuntimeError(
+                    f"Job exceeded maximum wait time ({max_wait_time}s)"
+                )
+
             response = requests.get(
                 f"{self.base_url}/status/{job_id}",
                 headers=self.headers,
@@ -170,11 +179,25 @@ class ChatterboxModel:
                 error = status_data.get("error", "Unknown error")
                 raise RuntimeError(f"Job failed: {error}")
 
-            # Wait before next poll
-            time.sleep(5)
-            attempt += 1
+            elif status == "CANCELLED":
+                raise RuntimeError("Job was cancelled")
 
-        raise RuntimeError("Job timed out")
+            elif status == "TIMED_OUT":
+                raise RuntimeError("Job timed out on server")
+
+            # Print periodic status updates
+            current_time = time.time()
+            if current_time - last_status_print >= status_print_interval:
+                elapsed_mins = int(elapsed // 60)
+                elapsed_secs = int(elapsed % 60)
+                console.print(
+                    f"[yellow]Job {status}: waiting {elapsed_mins}m {elapsed_secs}s "
+                    f"(job_id: {job_id[:8]}...)[/yellow]"
+                )
+                last_status_print = current_time
+
+            # Job still running (IN_QUEUE or IN_PROGRESS), wait and poll again
+            time.sleep(5)
 
     def synthesize(
         self,
@@ -231,12 +254,17 @@ class ChatterboxModel:
         # Concatenate audio chunks
         console.print("[cyan]Concatenating audio chunks...[/cyan]")
 
+        # Lazy import torch and torchaudio (only needed for concatenation)
+        import io
+
+        import torch
+        import torchaudio as ta
+
         # Load all chunks as tensors
         tensors = []
         sample_rate = None
 
         for audio_bytes in audio_chunks:
-            import io
             buffer = io.BytesIO(audio_bytes)
             waveform, sr = ta.load(buffer)
             tensors.append(waveform)
