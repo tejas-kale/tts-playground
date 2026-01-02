@@ -254,29 +254,25 @@ class ChatterboxModel:
         # Concatenate audio chunks
         console.print("[cyan]Concatenating audio chunks...[/cyan]")
 
-        # Lazy import torch and torchaudio (only needed for concatenation)
         import io
 
-        import torch
-        import torchaudio as ta
+        from pydub import AudioSegment
 
-        # Load all chunks as tensors
-        tensors = []
-        sample_rate = None
-
+        # Load all chunks as AudioSegments
+        segments = []
         for audio_bytes in audio_chunks:
             buffer = io.BytesIO(audio_bytes)
-            waveform, sr = ta.load(buffer)
-            tensors.append(waveform)
-            if sample_rate is None:
-                sample_rate = sr
+            segment = AudioSegment.from_wav(buffer)
+            segments.append(segment)
 
-        # Concatenate
-        concatenated = torch.cat(tensors, dim=-1)
+        # Concatenate all segments
+        concatenated = segments[0]
+        for segment in segments[1:]:
+            concatenated += segment
 
         # Save final audio
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        ta.save(str(output_path), concatenated, sample_rate)
+        concatenated.export(str(output_path), format="wav")
 
         console.print(f"[green]✓ Audio generated successfully[/green]")
         return output_path
